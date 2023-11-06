@@ -1,9 +1,12 @@
-import {Client, ActivityType, Presence, TextChannel} from 'discord.js';
+import {ActivityType, Client, TextChannel} from 'discord.js';
 import * as interactionCreate from "./events/interactionCreate";
 import * as ready from "./events/ready";
 import 'dotenv/config';
 import * as process from "process";
+
 const token: string = process.env.DISCORD_TOKEN as string;
+const userId: string = process.env.USER_ID as string;
+const channelId: string = process.env.CHANNEL_ID as string;
 
 type Status = {
     name: string;
@@ -41,7 +44,7 @@ client.on('ready', () => {
 });
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (newPresence.userId === '406127466680418316') { // Replace with your user ID
+    if (newPresence.userId === userId) {
         const activities = newPresence.activities;
         const status = newPresence.status;
         const timestamp = new Date().toLocaleString();
@@ -61,7 +64,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         });
 
         // Corrected code for sending message
-        const channelId = '1171191130159841290'; // Replace with your channel ID
+         // Replace with your channel ID
         const channel = client.channels.cache.get(channelId) as TextChannel;
 
         // Check if the channel is a text channel and then send the message
@@ -75,7 +78,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 });
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (newPresence.userId === '406127466680418316') { // Replace with your user ID
+    if (newPresence.userId === userId) { // Replace with your user ID
         newPresence.activities.forEach((activity) => {
             if (activity.type === ActivityType.Listening && activity.name === 'Spotify') {
                 const trackName = activity.details; // Name of the song
@@ -86,7 +89,6 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
                 const message = `Listening to ${trackName} by ${trackArtist} on the album ${trackAlbum}.`;
 
                 // Send to a specific channel
-                const channelId = '1171191130159841290'; // Replace with your channel ID
                 const channel = client.channels.cache.get(channelId) as TextChannel;
 
                 if (channel) {
