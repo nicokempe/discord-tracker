@@ -1,0 +1,30 @@
+{
+  "name": "discord-bot",
+  "version": "2023.11.1-dev",
+  "description": "Discord",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node src/Bot.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/nicokempe/robot"
+  },
+  "keywords": [
+    "discord"
+  ],
+  "author": {
+    "name": "Nico Kempe",
+    "email": "kontakt@nicokempe.de",
+    "url": "nicokempe.de"
+  },
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.10",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}
