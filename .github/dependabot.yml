@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    assignees:
+      - "nicokempe"
+    reviewers:
+      - "nicokempe"
+    commit-message:
+      prefix: "[npm] "
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    assignees:
+      - "nicokempe"
+    reviewers:
+      - "nicokempe"
+    commit-message:
+      prefix: "[docker] "
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    assignees:
+      - "nicokempe"
+    reviewers:
+      - "nicokempe"
+    commit-message:
+      prefix: "[actions] "
