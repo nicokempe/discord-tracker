@@ -47,8 +47,11 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (newPresence.userId === userId) {
         const activities = newPresence.activities;
         const status = newPresence.status;
-        const timestamp = new Date().toLocaleString();
-        let message = `[${timestamp}] Your new activity status: ${status}\n`;
+        const timestamp = new Intl.DateTimeFormat('de-DE', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }).format(new Date());
+        let message = `### :boom: Presence Update\n[${timestamp}] Your new activity status is **${status}**.\n`;
 
         activities.forEach(activity => {
             let type;
@@ -60,7 +63,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
                 case 4: type = 'Custom Status'; break;
                 default: type = 'Unknown'; break;
             }
-            message += `[${timestamp}] ${type} ${activity.name}\n`;
+            message += `[${timestamp}] *${type}* **${activity.name}**\n`;
         });
 
         // Corrected code for sending message
@@ -78,24 +81,24 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 });
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (newPresence.userId === userId) { // Replace with your user ID
+    if (newPresence.userId === userId) {
+        const timestamp = new Intl.DateTimeFormat('de-DE', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }).format(new Date());
+
         newPresence.activities.forEach((activity) => {
             if (activity.type === ActivityType.Listening && activity.name === 'Spotify') {
-                const trackName = activity.details; // Name of the song
-                const trackArtist = activity.state; // Artist of the song
-                const trackAlbum = activity.assets?.largeText; // Album of the song
+                const trackName = activity.details;
+                const trackArtist = activity.state;
+                const trackAlbum = activity.assets?.largeText;
 
-                // Construct the message
-                const message = `Listening to ${trackName} by ${trackArtist} on the album ${trackAlbum}.`;
+                // Construct the message with the timestamp
+                const spotifyMessage = `[${timestamp}] Listening to "**${trackName}**" by "*${trackArtist}*" on the album "*${trackAlbum}*".`;
 
                 // Send to a specific channel
                 const channel = client.channels.cache.get(channelId) as TextChannel;
-
-                if (channel) {
-                    channel.send(message).catch(console.error);
-                } else {
-                    console.error('Could not find the channel.');
-                }
+                if (channel) channel.send(spotifyMessage).catch(console.error);
             }
         });
     }
