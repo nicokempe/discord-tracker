@@ -9,6 +9,7 @@ RUN npm run build
 # Run stage
 FROM node:21-alpine
 WORKDIR /usr/src/app
+ENV TZ=Europe/Berlin
 COPY --from=build /usr/src/app/dist ./dist
 COPY package*.json ./
 RUN npm install --only=production
