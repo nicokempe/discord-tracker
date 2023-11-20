@@ -47,11 +47,23 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (newPresence.userId === userId) {
         const activities = newPresence.activities;
         const status = newPresence.status;
+        const clientStatus = newPresence.clientStatus;
         const timestamp = new Intl.DateTimeFormat('de-DE', {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit'
         }).format(new Date());
-        let message = `### :boom: Presence Update\n[${timestamp}] Your new activity status is **${status}**.\n`;
+
+        // Preparing the client status part of the message
+        let clientStatusMessage = [];
+        if (clientStatus) {
+            if (clientStatus.desktop) clientStatusMessage.push(`${clientStatus.desktop} on Desktop :desktop:`);
+            if (clientStatus.mobile) clientStatusMessage.push(`${clientStatus.mobile} on Mobile :mobile_phone:`);
+            if (clientStatus.web) clientStatusMessage.push(`${clientStatus.web} on Web :globe_with_meridians:`);
+        }
+        const clientStatusString = clientStatusMessage.join(', ');
+
+        // Combining the status and client status in one line with the title
+        let message = `### :boom: Presence Update\n[${timestamp}] Your new activity status is **${status}**. (${clientStatusString})\n`;
 
         activities.forEach(activity => {
             let type;
@@ -66,8 +78,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
             message += `[${timestamp}] *${type}* **${activity.name}**\n`;
         });
 
-        // Corrected code for sending message
-         // Replace with your channel ID
+        // Actual message
         const channel = client.channels.cache.get(channelId) as TextChannel;
 
         // Check if the channel is a text channel and then send the message
@@ -75,7 +86,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
             channel.send(message)
                 .catch(console.error); // Catch and log any errors
         } else {
-            console.error('Could not find the channel.');
+            console.error(`[${timestamp}] Could not find the channel.`);
         }
     }
 });
@@ -94,7 +105,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
                 const trackAlbum = activity.assets?.largeText;
 
                 // Construct the message with the timestamp
-                const spotifyMessage = `[${timestamp}] Listening to "**${trackName}**" by "*${trackArtist}*" on the album "*${trackAlbum}*".`;
+                const spotifyMessage = `[${timestamp}] :musical_note: Listening to "**${trackName}**" by "*${trackArtist}*" on the album "*${trackAlbum}*".`;
 
                 // Send to a specific channel
                 const channel = client.channels.cache.get(channelId) as TextChannel;
