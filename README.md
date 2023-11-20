@@ -1,4 +1,4 @@
-## 🤖 Discord Activity Tracker Bot
+![Header](.github/gh-header-image.png)
 
 ### 🚀 Introduction
 Welcome to the Discord Activity Tracker Bot repository. This advanced bot provides real-time tracking and broadcasting of user activities on Discord, including special integrations for music tracking via Spotify.
