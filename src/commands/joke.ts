@@ -1,4 +1,5 @@
-import { CommandInteraction, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from '@discordjs/builders';
+import { CommandInteraction } from 'discord.js';
 
 const jokes = [
     "Why did Anakin Skywalker cross the road? To get to the Dark Side.",
@@ -25,14 +26,17 @@ const jokes = [
     "Why did the Ewok fall out of the tree? Because it was dead.",
     "Why did Yoda turn down a programming job? Because he didn't want to work on the dark side.",
     "How does Wicket get around Endor? Ewoks.",
-    "What did the rancor say after eating a Wookiee? Chewie!",
+    "What did the rancor say after eating a Wookiee? Chewie!"
 ];
 
-export const data = new SlashCommandBuilder()
-    .setName('joke')
-    .setDescription('Tells a random Star Wars joke');
+const joke = {
+    data: new SlashCommandBuilder()
+        .setName('joke')
+        .setDescription('Tells a Star Wars joke'),
+    async execute(interaction: CommandInteraction) {
+        const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+        await interaction.reply(randomJoke);
+    },
+};
 
-export async function execute(interaction: CommandInteraction) {
-    const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-    await interaction.reply({ ephemeral: true, content: randomJoke });
-}
+export default joke;

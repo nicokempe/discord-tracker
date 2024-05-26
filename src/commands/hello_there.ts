@@ -1,10 +1,13 @@
-import { CommandInteraction, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from '@discordjs/builders';
+import { CommandInteraction } from 'discord.js';
 
-export const data = new SlashCommandBuilder()
-    .setName("hello_there")
-    .setDescription("Returns a greeting");
+const helloThere = {
+    data: new SlashCommandBuilder()
+        .setName('hello_there')
+        .setDescription('Replies with General Kenobi'),
+    async execute(interaction: CommandInteraction) {
+        await interaction.reply('General Kenobi');
+    },
+};
 
-export async function execute(interaction: CommandInteraction) {
-    const content: string = "General Kenobi!";
-    await interaction.reply({ ephemeral: true, content });
-}
+export default helloThere;
