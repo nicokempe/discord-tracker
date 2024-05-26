@@ -1,6 +1,6 @@
 {
   "name": "discord-tracker",
-  "version": "2024.5.1",
+  "version": "2024.5.2",
   "description": "Discord Tracker made by Nico Kempe",
   "main": "index.ts",
   "scripts": {
