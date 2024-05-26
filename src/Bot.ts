@@ -1,6 +1,6 @@
 import {ActivityType, Client, TextChannel} from 'discord.js';
 import * as interactionCreate from "./events/interactionCreate";
-import * as ready from "./events/ready";
+import { ready } from './events/ready';
 import 'dotenv/config';
 import * as process from "process";
 
@@ -116,6 +116,6 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 });
 
 client.on(interactionCreate.name, interactionCreate.execute);
-client.on(ready.name, () => ready.execute(client));
+client.once(ready.name, () => ready.execute(client));
 
 client.login(token).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
