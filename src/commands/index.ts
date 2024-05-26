@@ -1,8 +1,16 @@
-// src/commands/index.ts
-import * as hello_there from "./hello_there";
-import * as joke from "./joke";  // Import the new command
+import helloThere from './hello_there';
+import joke from './joke';
 
-export const commands = {
-    hello_there,
+interface Command {
+    data: {
+        name: string;
+        description: string;
+        toJSON: () => object;
+    };
+    execute: (interaction: any) => Promise<void>;
+}
+
+export const commands: { [key: string]: Command } = {
+    helloThere,
     joke,
 };
