@@ -1,37 +1,40 @@
-// src/events/ready.ts
-import { Client } from "discord.js";
-import { commands } from "../commands";
-import process from "process";
-import 'dotenv/config';
-const guildIdentifier: string = process.env.GUILD_ID as string;
+import { Client } from 'discord.js';
+import { REST } from '@discordjs/rest';
+import { Routes } from 'discord-api-types/v9';
+import { commands } from '../commands';
 
-export const name = 'ready';
+export const ready = {
+    name: 'ready',
+    once: true,
+    async execute(client: Client) {
+        if (!client.user) {
+            console.error('Client user is null');
+            return;
+        }
 
-export const execute = async (client: Client) => {
-    console.log(`Logged in as ${client.user?.tag}!`);
+        console.log(`Logged in as ${client.user.tag}!`);
 
-    const guildId: string = guildIdentifier;
-    const guild = client.guilds.cache.get(guildId);
+        const token = process.env.DISCORD_TOKEN;
+        if (!token) {
+            console.error('Discord bot token is undefined');
+            return;
+        }
 
-    if (!guild) {
-        console.error(`Guild with ID ${guildId} not found.`);
-        return;
-    }
+        const rest = new REST({ version: '9' }).setToken(token);
 
-    // Log registered commands
-    const registeredCommands = await guild.commands.fetch();
-    console.log('Registered commands:', registeredCommands.map(cmd => cmd.name).join(', '));
+        try {
+            console.log('Started refreshing application (/) commands.');
 
-    // Create commands
-    await Promise.all(
-        Object.values(commands).map(async command => {
-            const { data } = command;
-            try {
-                await guild.commands.create(data);
-                console.log(`Registered command: ${data.name}`);
-            } catch (error) {
-                console.error(`Failed to register command ${data.name}:`, error);
-            }
-        })
-    );
+            const commandData = Object.values(commands).map((command) => command.data.toJSON());
+
+            await rest.put(
+                Routes.applicationCommands(client.user.id),
+                { body: commandData }
+            );
+
+            console.log('Successfully reloaded application (/) commands.');
+        } catch (error) {
+            console.error(error);
+        }
+    },
 };
