@@ -7,6 +7,7 @@ Welcome to the Discord Activity Tracker Bot repository. This advanced bot provid
 * **Activity Tracking**: Tracks what users are playing, listening to, or watching in real-time.
 * **Spotify Integration**: Displays details about songs being played on Spotify.
 * **Custom Status Updates**: Updates user status based on their current activity.
+* **Dynamic User Management**: Supports user configuration via users.json for flexible activity tracking across multiple users.
 * **Docker Support**: Easy to deploy and manage using Docker.
 
 ### 💻 Technologies
@@ -28,22 +29,54 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
    git clone https://github.com/nicokempe/robot.git
    ```
 
-3. **Set Up Environment Variables**: 
-- Copy the `.env.example` file to a new file named `.env`.
+2. **Set Up Environment Variables**:
 
-  ```bash
-  cp .env.example .env
-  ```
+- Copy the `.env.example` file to a new file named `.env`.
+   ```bash
+   cp .env.example .env
+   ```
 
 - Edit the `.env` file and replace the placeholder values with your actual Discord bot token, user ID, and the channel ID where messages will be posted.
   ```env
   DISCORD_TOKEN=your_actual_discord_bot_token
   GUILD_ID=your_guild_id
-  USER_ID=your_discord_user_id
-  CHANNEL_ID=your_discord_channel_id
   ```
-3. **Docker Setup**: 
-Make sure Docker is installed on your system. Use the `Dockerfile` and `docker-compose.yml` to build and run the bot.
+  
+3. **Configure User Tracking**: The bot allows tracking multiple users dynamically through a users.json file. This file specifies which users the bot should track and in which channels to post updates.
+
+   Example `users.json`:
+
+    ```json
+    {
+      "users": [
+        {
+          "userId": "1234567890",
+          "channelId": "9876543210",
+          "isFanClub": false,
+          "prefix": ":boom:"
+        },
+        {
+          "userId": "0987654321",
+          "channelId": "5678901234",
+          "isFanClub": true,
+          "prefix": ":star:"
+        }
+      ]
+    }
+    ```
+
+4. **Docker Setup**: Make sure Docker is installed on your system. Use the `Dockerfile` to build and run the bot with Docker.
+
+    **Build and run with Docker**:
+
+    ```bash
+    docker build -t discord-tracker .
+    docker run -d --name discord-tracker -v $(pwd)/config:/usr/src/app/config discord-tracker
+    ```
+   
+    -   The `users.json` should be placed inside the `config` folder in your project root, and Docker will mount this directory at runtime.
+
+5. **Start the Bot**: After setting everything up, start the bot. It will automatically begin tracking the specified users and post updates to the designated channels.
 
 ### 🚀 Usage
 
