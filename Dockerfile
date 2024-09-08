@@ -12,5 +12,6 @@ WORKDIR /usr/src/app
 ENV TZ=Europe/Berlin
 COPY --from=build /usr/src/app/dist ./dist
 COPY package*.json ./
+COPY config/users.json ./config/
 RUN npm install --only=production
 CMD ["node", "dist/Bot.js"]
