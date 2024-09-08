@@ -1,14 +1,15 @@
-import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel} from 'discord.js';
+import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel } from 'discord.js';
 import * as interactionCreate from "./events/interactionCreate";
-import {ready} from './events/ready';
+import { ready } from './events/ready';
 import 'dotenv/config';
 import * as process from "process";
+import * as fs from 'fs';
 
 const token: string = process.env.DISCORD_TOKEN as string;
-const userId: string = process.env.USER_ID as string;
-const channelId: string = process.env.CHANNEL_ID as string;
-const mainUserId: string = process.env.MAIN_USER_ID as string;
-const fanClubChannelId: string = process.env.FAN_CLUB_CHANNEL_ID as string;
+
+// Load users from users.json
+const usersConfig = JSON.parse(fs.readFileSync('./config/users.json', 'utf-8'));
+type UserConfig = { userId: string, channelId: string, isFanClub: boolean, prefix: string };
 
 type Status = {
     name: string;
@@ -16,10 +17,10 @@ type Status = {
 };
 
 const statuses: Status[] = [
-    {name: 'automations', type: 'Playing'},
-    {name: 'code', type: 'Playing'},
-    {name: 'networking', type: 'Playing'},
-    {name: 'consulting', type: 'Playing'},
+    { name: 'automations', type: 'Playing' },
+    { name: 'code', type: 'Playing' },
+    { name: 'networking', type: 'Playing' },
+    { name: 'consulting', type: 'Playing' },
 ];
 
 const client = new Client({
@@ -34,7 +35,7 @@ client.on('ready', () => {
     const updateStatus = () => {
         const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
         try {
-            client.user?.setActivity(randomStatus.name, {type: ActivityType[randomStatus.type]});
+            client.user?.setActivity(randomStatus.name, { type: ActivityType[randomStatus.type] });
             console.log(`Updated status to: ${randomStatus.name}`);
         } catch (error) {
             console.error(`Failed to update status: ${(error as Error).message}`);
@@ -51,7 +52,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         hour: '2-digit', minute: '2-digit', second: '2-digit'
     }).format(new Date());
 
-    const createPresenceMessage = (newPresence: any, channelId: string, prefix: string, isFanClub: boolean) => {
+    const createPresenceMessage = (newPresence: any, userConfig: UserConfig) => {
         const activities = newPresence.activities;
         const status = newPresence.status;
         const clientStatus = newPresence.clientStatus;
@@ -65,10 +66,10 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         const clientStatusString = clientStatusMessage.join(', ');
 
         let message: string | MessagePayload | MessageCreateOptions;
-        if (isFanClub) {
-            message = `### ${prefix} ${newPresence.user?.tag}'s activity update\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
+        if (userConfig.isFanClub) {
+            message = `### ${userConfig.prefix} ${newPresence.user?.tag}'s activity update\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
         } else {
-            message = `### ${prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
+            message = `### ${userConfig.prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
         }
 
         activities.forEach((activity: { type: any; name: any; }) => {
@@ -81,14 +82,10 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
                 case 4: type = 'Custom Status'; break;
                 default: type = 'Unknown'; break;
             }
-            if (isFanClub) {
-                message += `[${timestamp}] *${type}* **${activity.name}**\n`;
-            } else {
-                message += `[${timestamp}] *${type}* **${activity.name}**\n`;
-            }
+            message += `[${timestamp}] *${type}* **${activity.name}**\n`;
         });
 
-        const channel = client.channels.cache.get(channelId) as TextChannel;
+        const channel = client.channels.cache.get(userConfig.channelId) as TextChannel;
         if (channel) {
             channel.send(message).catch(console.error);
         } else {
@@ -96,23 +93,8 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         }
     };
 
-    if (newPresence.userId === userId) {
-        createPresenceMessage(newPresence, channelId, ':boom:', false);
-    }
-
-    if (newPresence.userId === mainUserId) {
-        createPresenceMessage(newPresence, fanClubChannelId, ':star:', true);
-    }
-});
-
-client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (newPresence.userId === userId || newPresence.userId === mainUserId) {
-        const timestamp = new Intl.DateTimeFormat('de-DE', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        }).format(new Date());
-
-        newPresence.activities.forEach((activity) => {
+    const spotifyIntegration = (newPresence: any, userConfig: UserConfig) => {
+        newPresence.activities.forEach((activity: any) => {
             if (activity.type === ActivityType.Listening && activity.name === 'Spotify') {
                 const trackName = activity.details;
                 const trackArtist = activity.state;
@@ -120,12 +102,19 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 
                 const spotifyMessage = `[${timestamp}] :musical_note: Listening to "**${trackName}**" by "*${trackArtist}*" on the album "*${trackAlbum}*".`;
 
-                const targetChannelId = newPresence.userId === userId ? channelId : fanClubChannelId;
-                const channel = client.channels.cache.get(targetChannelId) as TextChannel;
+                const channel = client.channels.cache.get(userConfig.channelId) as TextChannel;
                 if (channel) channel.send(spotifyMessage).catch(console.error);
             }
         });
-    }
+    };
+
+    usersConfig.users.forEach((userConfig: UserConfig) => {
+        if (newPresence.userId === userConfig.userId) {
+            createPresenceMessage(newPresence, userConfig);
+            spotifyIntegration(newPresence, userConfig);
+        }
+    });
+
 });
 
 client.on(interactionCreate.name, interactionCreate.execute);
