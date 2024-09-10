@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord
+    url: https://discord.gg/5P7JZxyCQe
+    about: Ask questions and discuss with other developers in real time!
+  - name: Development Team Mail
+    url: mailto:github@nicokempe.de
+    about: For really urgent questions about the development, you can also email me directly!
+  - name: Compliance Team Mail
+    url: mailto:compliance@nicokempe.de
+    about: For questions or concerns related to compliance, please email the Compliance email directly.
