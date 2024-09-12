@@ -26,7 +26,7 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
 1. **Clone the Repository**: 
    Clone the repository to your machine or server.
    ```bash
-   git clone https://github.com/nicokempe/robot.git
+   git clone https://github.com/nicokempe/discord-tracker.git
    ```
 
 2. **Set Up Environment Variables**:
@@ -53,13 +53,15 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
           "userId": "1234567890",
           "channelId": "9876543210",
           "isFanClub": false,
-          "prefix": ":boom:"
+          "prefix": ":boom:",
+          "mentionUser": true
         },
         {
           "userId": "0987654321",
           "channelId": "5678901234",
           "isFanClub": true,
-          "prefix": ":star:"
+          "prefix": ":star:",
+          "mentionUser": false
         }
       ]
     }
