@@ -9,7 +9,7 @@ const token: string = process.env.DISCORD_TOKEN as string;
 
 // Load users from users.json
 const usersConfig = JSON.parse(fs.readFileSync('./config/users.json', 'utf-8'));
-type UserConfig = { userId: string, channelId: string, isFanClub: boolean, prefix: string };
+type UserConfig = { userId: string, channelId: string, isFanClub: boolean, prefix: string, mentionUser: false };
 
 type Status = {
     name: string;
@@ -65,9 +65,12 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         }
         const clientStatusString = clientStatusMessage.join(', ');
 
+        // Use mention if 'mentionUser' is true, otherwise use the username
+        const userTag = userConfig.mentionUser ? `<@${newPresence.userId}>` : newPresence.user?.tag;
+
         let message: string | MessagePayload | MessageCreateOptions;
         if (userConfig.isFanClub) {
-            message = `### ${userConfig.prefix} ${newPresence.user?.tag}'s activity update\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
+            message = `### ${userConfig.prefix} ${userTag}'s activity update\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
         } else {
             message = `### ${userConfig.prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
         }

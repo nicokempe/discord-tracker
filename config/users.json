@@ -4,7 +4,8 @@
       "userId": "406127466680418316",
       "channelId": "1244313986263154789",
       "isFanClub": true,
-      "prefix": ":star:"
+      "prefix": ":star:",
+      "mentionUser": false
     }
   ]
 }
