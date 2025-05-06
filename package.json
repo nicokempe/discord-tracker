@@ -20,7 +20,7 @@
     "url": "nicokempe.de"
   },
   "dependencies": {
-    "discord.js": "^14.19.2",
+    "discord.js": "^14.19.3",
     "dotenv": "^16.4.7"
   },
   "devDependencies": {
