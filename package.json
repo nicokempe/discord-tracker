@@ -1,7 +1,7 @@
 {
   "name": "discord-tracker",
-  "version": "2024.5.2",
-  "description": "Discord Tracker made by Nico Kempe",
+  "version": "2025.7.1",
+  "description": "Advanced Discord Bot with Spotify Integration: Tracks and broadcasts user activities in real-time, offering custom status updates and music tracking features.",
   "main": "index.ts",
   "scripts": {
     "start": "ts-node src/Bot.ts",
@@ -9,10 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "github.com/nicokempe/robot"
+    "url": "github.com/nicokempe/discord-tracker"
   },
   "keywords": [
-    "discord"
+    "discord",
+    "typescript"
   ],
   "author": {
     "name": "Nico Kempe",
