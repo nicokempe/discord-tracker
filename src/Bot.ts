@@ -8,7 +8,13 @@ const token: string = process.env.DISCORD_TOKEN as string;
 
 // Load users from users.json
 const usersConfig = JSON.parse(fs.readFileSync('./config/users.json', 'utf-8'));
-type UserConfig = { userId: string, channelId: string, isFanClub: boolean, prefix: string, mentionUser: false };
+type UserConfig = {
+    userId: string,
+    channelId: string,
+    broadcast: boolean,
+    prefix: string,
+    mentionUser: boolean
+};
 
 type Status = {
     name: string;
@@ -68,8 +74,8 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
         const userTag = userConfig.mentionUser ? `<@${newPresence.userId}>` : newPresence.user?.tag;
 
         let message: string | MessagePayload | MessageCreateOptions;
-        if (userConfig.isFanClub) {
-            message = `### ${userConfig.prefix} ${userTag}'s activity update\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
+        if (userConfig.broadcast) {
+            message = `### ${userConfig.prefix} Activity update for ${userTag}\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
         } else {
             message = `### ${userConfig.prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
         }

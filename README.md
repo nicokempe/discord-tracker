@@ -51,20 +51,22 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
         {
           "userId": "1234567890",
           "channelId": "9876543210",
-          "isFanClub": false,
+          "broadcast": false,
           "prefix": ":boom:",
           "mentionUser": true
         },
         {
           "userId": "0987654321",
           "channelId": "5678901234",
-          "isFanClub": true,
+          "broadcast": true,
           "prefix": ":star:",
           "mentionUser": false
         }
       ]
     }
     ```
+
+    The `broadcast` flag controls how updates are phrased. When set to `true`, updates are formatted for a public channel with the user's name. If `false`, messages address the user directly.
 
 4. **Docker Setup**: Make sure Docker is installed on your system. Use the `Dockerfile` to build and run the bot with Docker.
 
