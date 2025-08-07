@@ -131,3 +131,4 @@ dist
 
 # custom
 .idea
+config/users.json
