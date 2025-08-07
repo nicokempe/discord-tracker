@@ -5,7 +5,9 @@
   "main": "src/Bot.ts",
   "scripts": {
     "start": "ts-node src/Bot.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "prerelease": "npm install && npm run build",
+    "release": "npx changelogen@latest --release --patch --bump --push"
   },
   "repository": {
     "type": "git",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.2.0",
+    "changelogen": "^0.6.2",
     "ts-node": "^10.9.1",
     "typescript": "^5.9.2"
   }
