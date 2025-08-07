@@ -1,4 +1,4 @@
-import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel } from 'discord.js';
+import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel, PermissionFlagsBits } from 'discord.js';
 import { ready } from './events/ready';
 import 'dotenv/config';
 import * as process from "process";
@@ -93,12 +93,27 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
             message += `[${timestamp}] *${type}* **${activity.name}**\n`;
         });
 
-        const channel = client.channels.cache.get(userConfig.channelId) as TextChannel;
-        if (channel) {
-            channel.send(message).catch(console.error);
-        } else {
-            console.error(`[${timestamp}] Could not find the channel.`);
+        const channel = client.channels.cache.get(userConfig.channelId);
+        if (!channel || !(channel instanceof TextChannel)) {
+            console.error(`[${timestamp}] Could not find the channel with ID ${userConfig.channelId}.`);
+            return;
         }
+
+        const botUser = client.user;
+        if (!botUser) {
+            console.error(`[${timestamp}] Client user is not available.`);
+            return;
+        }
+
+        const permissions = channel.permissionsFor(botUser);
+        if (!permissions?.has(PermissionFlagsBits.SendMessages)) {
+            console.error(`[${timestamp}] Missing permission to send messages in channel ${channel.id}.`);
+            return;
+        }
+
+        channel.send(message).catch(error => {
+            console.error(`[${timestamp}] Failed to send presence message in channel ${channel.id}: ${error}`);
+        });
     };
 
     const spotifyIntegration = (newPresence: any, userConfig: UserConfig): void => {
@@ -110,8 +125,27 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
 
                 const spotifyMessage = `[${timestamp}] :musical_note: Listening to "**${trackName}**" by "*${trackArtist}*" on the album "*${trackAlbum}*".`;
 
-                const channel = client.channels.cache.get(userConfig.channelId) as TextChannel;
-                if (channel) channel.send(spotifyMessage).catch(console.error);
+                const channel = client.channels.cache.get(userConfig.channelId);
+                if (!channel || !(channel instanceof TextChannel)) {
+                    console.error(`[${timestamp}] Could not find the channel with ID ${userConfig.channelId}.`);
+                    return;
+                }
+
+                const botUser = client.user;
+                if (!botUser) {
+                    console.error(`[${timestamp}] Client user is not available.`);
+                    return;
+                }
+
+                const permissions = channel.permissionsFor(botUser);
+                if (!permissions?.has(PermissionFlagsBits.SendMessages)) {
+                    console.error(`[${timestamp}] Missing permission to send messages in channel ${channel.id}.`);
+                    return;
+                }
+
+                channel.send(spotifyMessage).catch(error => {
+                    console.error(`[${timestamp}] Failed to send Spotify message in channel ${channel.id}: ${error}`);
+                });
             }
         });
     };
