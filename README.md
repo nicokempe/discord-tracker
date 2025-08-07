@@ -1,12 +1,12 @@
 ![Header](.github/gh-header-image.png)
 
 ### 🚀 Introduction
-Welcome to the Discord Activity Tracker Bot repository. This advanced bot provides real-time tracking and broadcasting of user activities on Discord, including special integrations for music tracking via Spotify.
+Welcome to the Discord Activity Tracker Bot repository. This bot monitors configured users and broadcasts their Discord activities to specified channels. It includes optional Spotify track details and rotates through predefined status messages.
 
 ### ⏱️ Features
 * **Activity Tracking**: Tracks what users are playing, listening to, or watching in real-time.
 * **Spotify Integration**: Displays details about songs being played on Spotify.
-* **Custom Status Updates**: Updates user status based on their current activity.
+* **Rotating Status Messages**: Cycles through a predefined list of statuses every hour.
 * **Dynamic User Management**: Supports user configuration via users.json for flexible activity tracking across multiple users.
 * **Docker Support**: Easy to deploy and manage using Docker.
 
@@ -36,7 +36,7 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
    cp .env.example .env
    ```
 
-- Edit the `.env` file and replace the placeholder values with your actual Discord bot token, user ID, and the channel ID where messages will be posted.
+- Edit the `.env` file and replace the placeholder value with your actual Discord bot token.
   ```env
   DISCORD_TOKEN=your_actual_discord_bot_token
   ```
@@ -81,7 +81,7 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
 
 ### 🚀 Usage
 
-After setting up, the bot will automatically start tracking your Discord activities and update its status. It will also post updates about your activities in the designated Discord channel. Ensure the bot has the necessary permissions in your Discord server to function properly.
+After setting up, the bot will automatically start tracking the users specified in `users.json` and rotate its status. It will also post updates about their activities in the designated Discord channels. Ensure the bot has the necessary permissions in your Discord server to function properly.
 
 ### 📝 Contributing
 
