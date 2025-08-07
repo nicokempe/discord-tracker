@@ -18,15 +18,15 @@
   "author": {
     "name": "Nico Kempe",
     "email": "kontakt@nicokempe.de",
-    "url": "nicokempe.de"
+    "url": "www.nicokempe.de"
   },
   "dependencies": {
     "discord.js": "^14.21.0",
-    "dotenv": "^17.0.1"
+    "dotenv": "^17.2.1"
   },
   "devDependencies": {
-    "@types/node": "^22.15.27",
+    "@types/node": "^24.2.0",
     "ts-node": "^10.9.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.2"
   }
 }
