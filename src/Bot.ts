@@ -1,5 +1,4 @@
 import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel } from 'discord.js';
-import * as interactionCreate from "./events/interactionCreate";
 import { ready } from './events/ready';
 import 'dotenv/config';
 import * as process from "process";
@@ -31,8 +30,8 @@ const client = new Client({
     ],
 });
 
-client.on('ready', () => {
-    const updateStatus = () => {
+client.on('ready', (): void => {
+    const updateStatus = (): void => {
         const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
         try {
             client.user?.setActivity(randomStatus.name, { type: ActivityType[randomStatus.type] });
@@ -46,8 +45,8 @@ client.on('ready', () => {
     setInterval(updateStatus, 3600000);  // Update status every hour thereafter
 });
 
-client.on('presenceUpdate', (oldPresence, newPresence) => {
-    const timestamp = new Intl.DateTimeFormat('de-DE', {
+client.on('presenceUpdate', (oldPresence, newPresence): void => {
+    const timestamp: string = new Intl.DateTimeFormat('de-DE', {
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit', second: '2-digit'
     }).format(new Date());
@@ -63,7 +62,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
             if (clientStatus.mobile) clientStatusMessage.push(`${clientStatus.mobile} on Mobile :mobile_phone:`);
             if (clientStatus.web) clientStatusMessage.push(`${clientStatus.web} on Web :globe_with_meridians:`);
         }
-        const clientStatusString = clientStatusMessage.join(', ');
+        const clientStatusString: string = clientStatusMessage.join(', ');
 
         // Use mention if 'mentionUser' is true, otherwise use the username
         const userTag = userConfig.mentionUser ? `<@${newPresence.userId}>` : newPresence.user?.tag;
@@ -111,7 +110,7 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         });
     };
 
-    usersConfig.users.forEach((userConfig: UserConfig) => {
+    usersConfig.users.forEach((userConfig: UserConfig): void => {
         if (newPresence.userId === userConfig.userId) {
             createPresenceMessage(newPresence, userConfig);
             spotifyIntegration(newPresence, userConfig);
@@ -120,7 +119,6 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 
 });
 
-client.on(interactionCreate.name, interactionCreate.execute);
-client.once(ready.name, () => ready.execute(client));
+client.once(ready.name, (): Promise<void> => ready.execute(client));
 
 client.login(token).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
