@@ -39,7 +39,6 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
 - Edit the `.env` file and replace the placeholder values with your actual Discord bot token, user ID, and the channel ID where messages will be posted.
   ```env
   DISCORD_TOKEN=your_actual_discord_bot_token
-  GUILD_ID=your_guild_id
   ```
   
 3. **Configure User Tracking**: The bot allows tracking multiple users dynamically through a users.json file. This file specifies which users the bot should track and in which channels to post updates.
