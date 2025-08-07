@@ -43,6 +43,8 @@ To set up the Discord Activity Tracker Bot, follow these instructions:
   
 3. **Configure User Tracking**: The bot allows tracking multiple users dynamically through a users.json file. This file specifies which users the bot should track and in which channels to post updates.
 
+   Create a `config` directory in the project root and add your own `users.json` file. This file is not included in the repository and must be supplied by you.
+
    Example `users.json`:
 
     ```json
