@@ -31,8 +31,8 @@ const client = new Client({
 });
 
 client.on('ready', (): void => {
-    const updateStatus = (): void => {
-        const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    const updateStatus: () => void = (): void => {
+        const randomStatus: Status = statuses[Math.floor(Math.random() * statuses.length)];
         try {
             client.user?.setActivity(randomStatus.name, { type: ActivityType[randomStatus.type] });
             console.log(`Updated status to: ${randomStatus.name}`);
@@ -51,7 +51,7 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
         hour: '2-digit', minute: '2-digit', second: '2-digit'
     }).format(new Date());
 
-    const createPresenceMessage = (newPresence: any, userConfig: UserConfig) => {
+    const createPresenceMessage = (newPresence: any, userConfig: UserConfig): void => {
         const activities = newPresence.activities;
         const status = newPresence.status;
         const clientStatus = newPresence.clientStatus;
@@ -74,7 +74,7 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
             message = `### ${userConfig.prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
         }
 
-        activities.forEach((activity: { type: any; name: any; }) => {
+        activities.forEach((activity: { type: any; name: any; }): void => {
             let type;
             switch (activity.type) {
                 case 0: type = 'Playing'; break;
@@ -95,8 +95,8 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
         }
     };
 
-    const spotifyIntegration = (newPresence: any, userConfig: UserConfig) => {
-        newPresence.activities.forEach((activity: any) => {
+    const spotifyIntegration = (newPresence: any, userConfig: UserConfig): void => {
+        newPresence.activities.forEach((activity: any): void => {
             if (activity.type === ActivityType.Listening && activity.name === 'Spotify') {
                 const trackName = activity.details;
                 const trackArtist = activity.state;
