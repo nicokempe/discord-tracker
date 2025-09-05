@@ -10,6 +10,9 @@ updates:
       - "nicokempe"
     commit-message:
       prefix: "chore(pnpm): "
+    labels:
+      - "🔄 update"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -20,6 +23,9 @@ updates:
       - "nicokempe"
     commit-message:
       prefix: "chore(docker): "
+    labels:
+      - "🔄 update"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -30,3 +36,5 @@ updates:
       - "nicokempe"
     commit-message:
       prefix: "chore(actions): "
+    labels:
+      - "🔄 update"
