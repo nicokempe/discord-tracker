@@ -1,4 +1,4 @@
-![Header](.github/gh-header-image.png)
+![Header](.github/media/banner.svg)
 
 ### 🚀 Introduction
 Welcome to the Discord Activity Tracker Bot repository. This bot monitors configured users and broadcasts their Discord activities to specified channels. It includes optional Spotify track details and rotates through predefined status messages.
