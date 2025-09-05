@@ -4,8 +4,8 @@ import { REST } from '@discordjs/rest';
 /**
  * Emitted when the client becomes ready to start working.
  */
-export const ready = {
-    name: 'ready',
+export const clientReady = {
+  name: 'clientReady',
     once: true,
     /**
      * Event handler executed when the bot becomes ready.

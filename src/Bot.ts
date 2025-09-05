@@ -8,7 +8,7 @@ import {
   Presence,
   TextChannel,
 } from 'discord.js';
-import { ready } from './events/ready';
+import { clientReady } from './events/clientReady';
 import 'dotenv/config';
 import * as process from "process";
 import * as fs from 'fs';
@@ -48,7 +48,7 @@ const client = new Client({
   ],
 });
 
-client.on('ready', (): void => {
+client.on('clientReady', (): void => {
   /** Update the bot's status to a random activity. */
   const updateBotStatus = (): void => {
     const randomStatus: Status = statuses[Math.floor(Math.random() * statuses.length)];
@@ -178,6 +178,6 @@ client.on('presenceUpdate', (oldPresence: Presence | null, newPresence: Presence
 
 });
 
-client.once(ready.name, (): Promise<void> => ready.execute(client));
+client.once(clientReady.name, (): Promise<void> => clientReady.execute(client));
 
 client.login(discordToken).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
