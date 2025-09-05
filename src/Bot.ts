@@ -1,21 +1,33 @@
-import { ActivityType, Client, MessageCreateOptions, MessagePayload, TextChannel, PermissionFlagsBits } from 'discord.js';
+import {
+  Activity,
+  ActivityType,
+  Client,
+  MessageCreateOptions,
+  MessagePayload,
+  PermissionFlagsBits,
+  Presence,
+  TextChannel,
+} from 'discord.js';
 import { ready } from './events/ready';
 import 'dotenv/config';
 import * as process from "process";
 import * as fs from 'fs';
 
-const token: string = process.env.DISCORD_TOKEN as string;
+const discordToken: string = process.env.DISCORD_TOKEN as string;
 
 // Load users from users.json
-const usersConfig = JSON.parse(fs.readFileSync('./config/users.json', 'utf-8'));
+const userConfigs = JSON.parse(fs.readFileSync('./config/users.json', 'utf-8')) as { users: UserConfig[] };
+
+/** Configuration for a tracked user. */
 type UserConfig = {
-  userId: string,
-  channelId: string,
-  broadcast: boolean,
-  prefix: string,
-  mentionUser: boolean
+  userId: string;
+  channelId: string;
+  broadcast: boolean;
+  prefix: string;
+  mentionUser: boolean;
 };
 
+/** Activity status used for rotating the bot's presence. */
 type Status = {
   name: string;
   type: keyof typeof ActivityType;
@@ -37,7 +49,8 @@ const client = new Client({
 });
 
 client.on('ready', (): void => {
-  const updateStatus: () => void = (): void => {
+  /** Update the bot's status to a random activity. */
+  const updateBotStatus = (): void => {
     const randomStatus: Status = statuses[Math.floor(Math.random() * statuses.length)];
     try {
       client.user?.setActivity(randomStatus.name, { type: ActivityType[randomStatus.type] });
@@ -47,50 +60,53 @@ client.on('ready', (): void => {
     }
   };
 
-  updateStatus();  // Update status immediately when bot is ready
-  setInterval(updateStatus, 3600000);  // Update status every hour thereafter
+  updateBotStatus(); // Update status immediately when bot is ready
+  setInterval(updateBotStatus, 3600000); // Update status every hour thereafter
 });
 
-client.on('presenceUpdate', (oldPresence, newPresence): void => {
+client.on('presenceUpdate', (oldPresence: Presence | null, newPresence: Presence): void => {
   const timestamp: string = new Intl.DateTimeFormat('de-DE', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   }).format(new Date());
 
-  const createPresenceMessage = (newPresence: any, userConfig: UserConfig): void => {
-    const activities = newPresence.activities;
-    const status = newPresence.status;
-    const clientStatus = newPresence.clientStatus;
+  /**
+   * Send a message summarizing the user's presence update.
+   */
+  const sendPresenceUpdate = (presence: Presence, userConfig: UserConfig): void => {
+    const activities = presence.activities;
+    const status = presence.status;
+    const clientStatus = presence.clientStatus;
 
-    let clientStatusMessage = [];
+    const deviceStatusMessages: string[] = [];
     if (clientStatus) {
-      if (clientStatus.desktop) clientStatusMessage.push(`${clientStatus.desktop} on Desktop :desktop:`);
-      if (clientStatus.mobile) clientStatusMessage.push(`${clientStatus.mobile} on Mobile :mobile_phone:`);
-      if (clientStatus.web) clientStatusMessage.push(`${clientStatus.web} on Web :globe_with_meridians:`);
+      if (clientStatus.desktop) deviceStatusMessages.push(`${clientStatus.desktop} on Desktop :desktop:`);
+      if (clientStatus.mobile) deviceStatusMessages.push(`${clientStatus.mobile} on Mobile :mobile_phone:`);
+      if (clientStatus.web) deviceStatusMessages.push(`${clientStatus.web} on Web :globe_with_meridians:`);
     }
-    const clientStatusString: string = clientStatusMessage.join(', ');
+    const deviceStatusSummary: string = deviceStatusMessages.join(', ');
 
     // Use mention if 'mentionUser' is true, otherwise use the username
-    const userTag = userConfig.mentionUser ? `<@${newPresence.userId}>` : newPresence.user?.tag;
+    const userTag = userConfig.mentionUser ? `<@${presence.userId}>` : presence.user?.tag;
 
-    let message: string | MessagePayload | MessageCreateOptions;
+    let activityMessage: string | MessagePayload | MessageCreateOptions;
     if (userConfig.broadcast) {
-      message = `### ${userConfig.prefix} Activity update for ${userTag}\n[${timestamp}] The new activity status is **${status}**. (${clientStatusString})\n`;
+      activityMessage = `### ${userConfig.prefix} Activity update for ${userTag}\n[${timestamp}] The new activity status is **${status}**. (${deviceStatusSummary})\n`;
     } else {
-      message = `### ${userConfig.prefix} Your new activity status is **${status}**. (${clientStatusString})\n`;
+      activityMessage = `### ${userConfig.prefix} Your new activity status is **${status}**. (${deviceStatusSummary})\n`;
     }
 
-    activities.forEach((activity: { type: any; name: any; }): void => {
-      let type;
+    activities.forEach((activity: Activity): void => {
+      let activityTypeLabel: string;
       switch (activity.type) {
-        case 0: type = 'Playing'; break;
-        case 1: type = 'Streaming'; break;
-        case 2: type = 'Listening to'; break;
-        case 3: type = 'Watching'; break;
-        case 4: type = 'Custom Status'; break;
-        default: type = 'Unknown'; break;
+        case 0: activityTypeLabel = 'Playing'; break;
+        case 1: activityTypeLabel = 'Streaming'; break;
+        case 2: activityTypeLabel = 'Listening to'; break;
+        case 3: activityTypeLabel = 'Watching'; break;
+        case 4: activityTypeLabel = 'Custom Status'; break;
+        default: activityTypeLabel = 'Unknown'; break;
       }
-      message += `[${timestamp}] *${type}* **${activity.name}**\n`;
+      activityMessage += `[${timestamp}] *${activityTypeLabel}* **${activity.name}**\n`;
     });
 
     const channel = client.channels.cache.get(userConfig.channelId);
@@ -111,13 +127,16 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
       return;
     }
 
-    channel.send(message).catch(error => {
+    channel.send(activityMessage).catch(error => {
       console.error(`[${timestamp}] Failed to send presence message in channel ${channel.id}: ${error}`);
     });
   };
 
-  const spotifyIntegration = (newPresence: any, userConfig: UserConfig): void => {
-    newPresence.activities.forEach((activity: any): void => {
+  /**
+   * Broadcast Spotify listening activity if present.
+   */
+  const handleSpotifyActivity = (presence: Presence, userConfig: UserConfig): void => {
+    presence.activities.forEach((activity: Activity): void => {
       if (activity.type === ActivityType.Listening && activity.name === 'Spotify') {
         const trackName = activity.details;
         const trackArtist = activity.state;
@@ -150,10 +169,10 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
     });
   };
 
-  usersConfig.users.forEach((userConfig: UserConfig): void => {
+  userConfigs.users.forEach((userConfig: UserConfig): void => {
     if (newPresence.userId === userConfig.userId) {
-      createPresenceMessage(newPresence, userConfig);
-      spotifyIntegration(newPresence, userConfig);
+      sendPresenceUpdate(newPresence, userConfig);
+      handleSpotifyActivity(newPresence, userConfig);
     }
   });
 
@@ -161,4 +180,4 @@ client.on('presenceUpdate', (oldPresence, newPresence): void => {
 
 client.once(ready.name, (): Promise<void> => ready.execute(client));
 
-client.login(token).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
+client.login(discordToken).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
