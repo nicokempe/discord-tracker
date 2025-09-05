@@ -1,9 +1,9 @@
 # Changelog
 
 
-## v2025.9.1
+## v2025.8.2
 
-[compare changes](https://undefined/undefined/compare/v2025.08.2...v2025.9.1)
+[compare changes](https://undefined/undefined/compare/v2025.08.2...v2025.8.2)
 
 ### 🚀 Enhancements
 
@@ -43,7 +43,6 @@
 - **pnpm:** Bump @types/node from 24.2.1 to 24.3.0 (#204)
 - **actions:** Bump actions/checkout from 4 to 5 (#203)
 - **pnpm:** Update packages (c18c7a4)
-- Set base version to 2025.9.0 before release (1bb00e4)
 
 ### 🤖 CI
 
