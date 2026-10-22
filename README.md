@@ -95,10 +95,21 @@ After setting up, the bot will automatically start tracking the users specified 
 
 Run `pnpm run typecheck` and `pnpm test` before submitting changes. Tests cover
 activity notifications, Spotify details, permission checks, login failure and
-the compiled health probe. The Docker workflow validates the frozen lockfile,
-types and tests on pull requests before building, and publishes only on `main`.
+the compiled health probe. Run `pnpm run release:check` to validate the release
+tooling. The **Validate** workflow checks the frozen lockfile, release tooling,
+types, tests and both container platforms on pull requests and pushes to `main`.
 
 Contributions to the Discord Activity Tracker Bot are welcome. Please feel free to fork the repository, make your changes, and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+
+### Releases and published containers
+
+Use **Actions → Release → Run workflow** on `main` to generate a Berlin calendar
+version (`YYYY.M.N`), changelog, annotated Git tag and GitHub Release, and publish
+signed AMD64/ARM64 images to `ghcr.io/nicokempe/discord-tracker`. Images are tagged
+with the release version, release commit, `latest` and the existing `main` alias.
+Pull requests and ordinary pushes run validation; containers are published by
+the manual release workflow. See [RELEASING.md](RELEASING.md) for prerequisites,
+scan artifacts and retry behavior.
 
 ### Container health
 

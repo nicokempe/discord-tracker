@@ -6,14 +6,14 @@
   "scripts": {
     "start": "pnpm run build && node dist/Bot.js",
     "build": "tsc",
-    "prerelease": "pnpm install && pnpm run build",
-    "release": "npx changelogen@latest --release --patch --bump --push",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && node --test tests/*.test.cjs"
+    "test": "pnpm run build && node --test tests/*.test.cjs",
+    "release:prepare": "node scripts/release/prepare-release.mts",
+    "release:check": "tsc --project scripts/release/tsconfig.json && node --test scripts/release/*.test.mts"
   },
   "repository": {
     "type": "git",
-    "url": "github.com/nicokempe/discord-tracker"
+    "url": "https://github.com/nicokempe/discord-tracker.git"
   },
   "keywords": [
     "discord",
