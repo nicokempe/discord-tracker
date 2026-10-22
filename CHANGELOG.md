@@ -1,6 +1,39 @@
 # Changelog
 
 
+## 2026.10.0
+
+[compare changes](https://github.com/nicokempe/discord-tracker/compare/514fc7247860ef08a66960aa0bb32376320d319e...2026.10.0)
+
+### 🚀 Enhancements
+
+- **health:** Add Discord readiness checks and refresh dependencies ([ffa3bb5](https://github.com/nicokempe/discord-tracker/commit/ffa3bb5))
+- **health:** Add gateway readiness checks and refresh dependencies ([#252](https://github.com/nicokempe/discord-tracker/pull/252))
+
+### 🩹 Fixes
+
+- **health:** Inspect every Discord shard during reconnects ([bed9f6c](https://github.com/nicokempe/discord-tracker/commit/bed9f6c))
+- **release:** Prepare releases through protected-branch pull requests ([5166dc1](https://github.com/nicokempe/discord-tracker/commit/5166dc1))
+- **release:** Respect protected main through release pull requests ([#254](https://github.com/nicokempe/discord-tracker/pull/254))
+
+### 📖 Documentation
+
+- **readme:** Replace banner with new design ([404c100](https://github.com/nicokempe/discord-tracker/commit/404c100))
+
+### 🏡 Chore
+
+- **actions:** Bump actions/setup-node from 4 to 5 ([f51e6dc](https://github.com/nicokempe/discord-tracker/commit/f51e6dc))
+- **release:** V2025.8.2 ([c58424c](https://github.com/nicokempe/discord-tracker/commit/c58424c))
+- **actions:** Bump actions/setup-node from 4 to 5 ([#209](https://github.com/nicokempe/discord-tracker/pull/209))
+- **pnpm:** Update dependencies and bump version to v2026.5.0 ([33d4312](https://github.com/nicokempe/discord-tracker/commit/33d4312))
+- **ci, docker:** Update actions, CodeQL, and Docker Node base images to latest versions ([66b2434](https://github.com/nicokempe/discord-tracker/commit/66b2434))
+- **ci:** Update Node.js setup action to v6.4.0 in CodeQL workflow ([18a7107](https://github.com/nicokempe/discord-tracker/commit/18a7107))
+
+### 🤖 CI
+
+- **release:** Automate calendar releases and signed containers ([9ea9fc2](https://github.com/nicokempe/discord-tracker/commit/9ea9fc2))
+- **release:** Automate calendar releases and signed containers ([#253](https://github.com/nicokempe/discord-tracker/pull/253))
+
 ## v2025.8.2
 
 [compare changes](https://undefined/undefined/compare/v2025.08.2...v2025.8.2)
