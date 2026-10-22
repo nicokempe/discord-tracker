@@ -1,16 +1,16 @@
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
+const { EventEmitter } = require('node:events');
 const { runInNewContext } = require('node:vm');
 const { test } = require('node:test');
 const { Client: DiscordClient, Collection, Status: GatewayStatus, WebSocketShard } = require('discord.js');
 const { isDiscordGatewayReady } = require('../dist/utils/validators.js');
 
 /** Executes the built entry point with an isolated Discord client and configuration. */
-const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, mentionUser = true } = {}) => {
+const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, mentionUser = true, processModule } = {}) => {
   const messages = [];
   const exits = [];
   const handlers = new Map();
-  const signals = new Map();
   let client;
   let readiness;
   let closed = false;
@@ -32,29 +32,30 @@ const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, m
     async login() { if (loginFails) throw new Error('login failed'); }
     async destroy() { this.destroyed = true; }
   }
-  const fakeProcess = {
+  const fakeProcess = Object.assign(new EventEmitter(), {
     env: { DISCORD_TOKEN: 'test-token' },
-    once: (signal, handler) => signals.set(signal, handler),
     exit: code => { exits.push(code); },
-  };
+  });
+  const runtimeProcess = processModule ?? fakeProcess;
   const modules = {
     'discord.js': { Client, TextChannel, ActivityType: { Playing: 0, Listening: 2 }, PermissionFlagsBits: { SendMessages: 1n }, Status: { Ready: 0 } },
     './events/clientReady': { clientReady: { name: 'clientReady', execute: async () => {} } },
     './health': { startHealthServer: async check => { readiness = check; return { close: () => { closed = true; } }; } },
     './utils/validators': { isDiscordGatewayReady },
     'dotenv/config': {},
-    process: fakeProcess,
+    process: runtimeProcess,
+    'node:process': runtimeProcess,
     fs: { readFileSync: () => JSON.stringify({ users: [{ userId: 'tracked', channelId: 'channel', broadcast, prefix: ':star:', mentionUser }] }) },
   };
   runInNewContext(readFileSync(require.resolve('../dist/Bot.js'), 'utf8'), {
     exports: {},
     require: name => Object.hasOwn(modules, name) ? modules[name] : require(name),
-    process: fakeProcess,
+    process: runtimeProcess,
     console: { log: () => {}, error: () => {} },
     setInterval: () => 0,
   });
   await new Promise(resolve => setImmediate(resolve));
-  return { client, messages, exits, handlers, signals, readiness, isClosed: () => closed };
+  return { client, messages, exits, handlers, process: runtimeProcess, readiness, isClosed: () => closed };
 };
 
 /** Builds a tracked presence with both a regular activity and Spotify details. */
@@ -67,6 +68,24 @@ const createPresence = (userId = 'tracked') => ({
     { type: 0, name: 'Example game' },
     { type: 2, name: 'Spotify', details: 'Example track', state: 'Example artist', assets: { largeText: 'Example album' } },
   ],
+});
+
+test('compiled startup registers signal handlers with the real Node process', async () => {
+  const signalNames = ['SIGTERM', 'SIGINT'];
+  const previousListeners = new Map(signalNames.map(signal => [signal, new Set(process.rawListeners(signal))]));
+  try {
+    const bot = await loadBot({ processModule: require('node:process') });
+    assert.equal(typeof bot.readiness, 'function');
+    for (const signal of signalNames) {
+      assert.equal(process.listenerCount(signal), previousListeners.get(signal).size + 1);
+    }
+  } finally {
+    for (const signal of signalNames) {
+      for (const listener of process.rawListeners(signal)) {
+        if (!previousListeners.get(signal).has(listener)) process.removeListener(signal, listener);
+      }
+    }
+  }
 });
 
 test('preserves activity broadcasts and Spotify details after dependency upgrades', async () => {
@@ -104,7 +123,7 @@ test('readiness requires both client readiness and a connected gateway', async (
   assert.equal(bot.readiness(), false);
   bot.client.ws.shards.get(0).status = 0;
   assert.equal(bot.readiness(), true);
-  bot.signals.get('SIGTERM')();
+  bot.process.emit('SIGTERM');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(bot.isClosed(), true);
   assert.equal(bot.client.destroyed, true);

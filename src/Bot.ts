@@ -13,7 +13,7 @@ import { startHealthServer } from './health';
 import { isDiscordGatewayReady } from './utils/validators';
 import { clientReady } from './events/clientReady';
 import 'dotenv/config';
-import * as process from "process";
+import process from 'node:process';
 import * as fs from 'fs';
 
 const discordToken: string = process.env.DISCORD_TOKEN as string;
