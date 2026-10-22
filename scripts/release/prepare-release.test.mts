@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { calculateNextReleaseVersion } from './version-policy.mts'
+import { workflowScript } from './workflow-test-helpers.mts'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -25,24 +26,6 @@ function git(fixture: Pick<ReleaseFixture, 'repository'>, ...argumentsList: stri
   })
   equal(result.status, 0, result.stderr)
   return result.stdout.trim()
-}
-
-/** Runs an actual workflow shell step against the isolated Git remote. */
-function runWorkflowStep(fixture: ReleaseFixture, stepName: string, environment: Record<string, string>): void {
-  const workflow = readFileSync(resolve(projectRoot, '.github/workflows/release.yml'), 'utf8').split('\n')
-  const stepStart = workflow.indexOf(`      - name: ${stepName}`)
-  notEqual(stepStart, -1, `Workflow step not found: ${stepName}`)
-  const followingStep = workflow.findIndex((line, index) => index > stepStart && line.startsWith('      - name: '))
-  const stepLines = workflow.slice(stepStart, followingStep === -1 ? undefined : followingStep)
-  const runStart = stepLines.findIndex(line => line.trim() === 'run: |')
-  notEqual(runStart, -1, `Shell block not found: ${stepName}`)
-  const script = stepLines.slice(runStart + 1).map(line => line.slice(10)).join('\n')
-  const result = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', script], {
-    cwd: fixture.repository,
-    env: { ...process.env, ...environment },
-    encoding: 'utf8',
-  })
-  equal(result.status, 0, result.stdout + result.stderr)
 }
 
 /** Creates a real repository with legacy tags and the installed Changelogen CLI. */
@@ -81,7 +64,7 @@ function createFixture(context: TestContext): ReleaseFixture {
 }
 
 /** Runs the actual release command without publishing any Git refs or packages. */
-function prepare(fixture: ReleaseFixture, outputName: string): {
+function prepare(fixture: ReleaseFixture, outputName: string, extraArguments: string[] = []): {
   readonly status: number | null
   readonly stderr: string
   readonly outputsPath: string
@@ -93,6 +76,7 @@ function prepare(fixture: ReleaseFixture, outputName: string): {
     'scripts/release/prepare-release.mts',
     '--github-output', outputsPath,
     '--notes-file', notesPath,
+    ...extraArguments,
   ], { cwd: fixture.repository, encoding: 'utf8' })
   return { status: result.status, stderr: result.stderr, outputsPath, notesPath }
 }
@@ -103,17 +87,11 @@ function readVersion(fixture: ReleaseFixture): string {
   return manifest.version
 }
 
-/** Commits the reviewed files without creating a release tag. */
-function commitPreparedRelease(fixture: ReleaseFixture): string {
-  const version = readVersion(fixture)
-  git(fixture, 'add', 'package.json', 'CHANGELOG.md', 'scripts/release/pending.json')
-  git(fixture, 'commit', '-m', `chore(release): ${version}`)
-  return version
-}
-
-/** Models publication after the release preparation has been merged. */
+/** Commits prepared files and annotates the same version, as the workflow does. */
 function commitRelease(fixture: ReleaseFixture): string {
-  const version = commitPreparedRelease(fixture)
+  const version = readVersion(fixture)
+  git(fixture, 'add', 'package.json', 'CHANGELOG.md')
+  git(fixture, 'commit', '-m', `chore(release): ${version}`)
   git(fixture, 'tag', '--annotate', version, '--message', version)
   return version
 }
@@ -133,8 +111,6 @@ test('prepares the first calendar release with valid links and preserves histori
   match(changelog, new RegExp(`^## ${expectedVersion.replaceAll('.', '\\.')}\\s*$`, 'm'))
   equal(changelog.endsWith(fixture.initialChangelog.replace('# Changelog\n', '')), true)
   match(readFileSync(result.outputsPath, 'utf8'), /should_commit=true/)
-  match(readFileSync(result.outputsPath, 'utf8'), /ready_to_publish=false/)
-  match(readFileSync(result.outputsPath, 'utf8'), /should_tag=false/)
   equal(git(fixture, 'rev-parse', 'HEAD'), headBefore)
   equal(git(fixture, 'tag', '--list'), 'v2000.01.0')
 })
@@ -150,7 +126,6 @@ test('resumes an existing release at HEAD without changing files or allocating a
   equal(readVersion(fixture), version)
   equal(readFileSync(resumed.notesPath, 'utf8'), readFileSync(first.notesPath, 'utf8'))
   match(readFileSync(resumed.outputsPath, 'utf8'), /should_commit=false/)
-  match(readFileSync(resumed.outputsPath, 'utf8'), /should_tag=false/)
   equal(git(fixture, 'rev-parse', 'HEAD'), headBefore)
   equal(git(fixture, 'status', '--porcelain'), '')
 })
@@ -172,98 +147,73 @@ test('releases only changes after the previous calendar tag and increments the m
   match(readFileSync(next.outputsPath, 'utf8'), new RegExp(`previous_reference=${previousVersion}`))
 })
 
-test('publishes a merged preparation without a second version bump or file changes', (context) => {
+test('recovers an incomplete tag after main advances using the original source and notes', (context) => {
   const fixture = createFixture(context)
   const first = prepare(fixture, 'first')
   equal(first.status, 0, first.stderr)
-  const version = commitPreparedRelease(fixture)
-  const reviewed = prepare(fixture, 'reviewed')
-  equal(reviewed.status, 0, reviewed.stderr)
-  equal(readVersion(fixture), version)
-  match(readFileSync(reviewed.outputsPath, 'utf8'), /ready_to_publish=true/)
-  match(readFileSync(reviewed.outputsPath, 'utf8'), /should_commit=false/)
-  match(readFileSync(reviewed.outputsPath, 'utf8'), /should_tag=true/)
-  equal(readFileSync(reviewed.notesPath, 'utf8'), readFileSync(first.notesPath, 'utf8'))
+  const version = commitRelease(fixture)
+  const releaseSha = git(fixture, 'rev-parse', 'HEAD')
+  const changelogPath = resolve(fixture.repository, 'CHANGELOG.md')
+  writeFileSync(changelogPath, readFileSync(changelogPath, 'utf8').replace(/Automate calendar releases/i, 'Unreleased later notes'))
+  git(fixture, 'add', 'CHANGELOG.md')
+  git(fixture, 'commit', '-m', 'fix(release): repair publication workflow')
+  const mainSha = git(fixture, 'rev-parse', 'HEAD')
+  const resumed = prepare(fixture, 'recovered', ['--resume-version', version])
+  equal(resumed.status, 0, resumed.stderr)
+  match(readFileSync(resumed.outputsPath, 'utf8'), /should_commit=false/)
+  match(readFileSync(resumed.outputsPath, 'utf8'), new RegExp(`source_sha=${releaseSha}`))
+  equal(readFileSync(resumed.notesPath, 'utf8'), readFileSync(first.notesPath, 'utf8'))
+  equal(git(fixture, 'rev-parse', 'HEAD'), mainSha)
   equal(git(fixture, 'status', '--porcelain'), '')
-  equal(git(fixture, 'tag', '--list'), 'v2000.01.0')
 })
 
-for (const changeKind of ['source', 'dependencies']) {
-  test(`refreshes prepared notes after ${changeKind} changes without consuming another version`, (context) => {
-    const fixture = createFixture(context)
-    const first = prepare(fixture, 'first')
-    equal(first.status, 0, first.stderr)
-    const version = commitPreparedRelease(fixture)
-    if (changeKind === 'source') {
-      writeFileSync(resolve(fixture.repository, 'feature.txt'), 'Additional reviewed work.\n')
-      git(fixture, 'add', 'feature.txt')
-    } else {
-      const packagePath = resolve(fixture.repository, 'package.json')
-      const packageObject = JSON.parse(readFileSync(packagePath, 'utf8')) as Record<string, unknown>
-      packageObject.dependencies = { 'discord.js': '14.27.0' }
-      writeFileSync(packagePath, `${JSON.stringify(packageObject, null, 2)}\n`)
-      git(fixture, 'add', 'package.json')
-    }
-    git(fixture, 'commit', '-m', 'feat: include subsequent activity updates')
-    const refreshed = prepare(fixture, 'refreshed')
-    equal(refreshed.status, 0, refreshed.stderr)
-    equal(readVersion(fixture), version)
-    match(readFileSync(refreshed.outputsPath, 'utf8'), /ready_to_publish=false/)
-    match(readFileSync(refreshed.outputsPath, 'utf8'), /should_commit=true/)
-    match(readFileSync(refreshed.notesPath, 'utf8'), /Include subsequent activity updates/i)
-    const changelog = readFileSync(resolve(fixture.repository, 'CHANGELOG.md'), 'utf8')
-    equal(changelog.split(`## ${version}\n`).length, 2)
-    commitPreparedRelease(fixture)
-    const reviewed = prepare(fixture, 'reviewed')
-    equal(reviewed.status, 0, reviewed.stderr)
-    match(readFileSync(reviewed.outputsPath, 'utf8'), /ready_to_publish=true/)
-  })
-}
-
-test('stages a release branch and publishes only a tag when direct main pushes are rejected', (context) => {
+test('pushes release files and the annotated tag together and tolerates a publication retry', (context) => {
   const fixture = createFixture(context)
-  const protectedRemote = resolve(fixture.directory, 'protected.git')
-  git(fixture, 'init', '--bare', protectedRemote)
-  git(fixture, 'remote', 'add', 'origin', protectedRemote)
+  const remote = resolve(fixture.directory, 'origin.git')
+  git(fixture, 'init', '--bare', remote)
+  git(fixture, 'remote', 'add', 'origin', remote)
   git(fixture, 'push', 'origin', 'HEAD:refs/heads/main')
-  const originalMain = git(fixture, 'rev-parse', 'HEAD')
-  writeFileSync(resolve(protectedRemote, 'hooks/pre-receive'), [
-    '#!/bin/sh',
-    'while read previous next reference; do',
-    '  if [ "$reference" = refs/heads/main ]; then',
-    '    echo "Protected main requires a pull request." >&2',
-    '    exit 1',
-    '  fi',
-    'done',
-    '',
-  ].join('\n'), { mode: 0o755 })
+  const baseSha = git(fixture, 'rev-parse', 'HEAD')
   const first = prepare(fixture, 'first')
   equal(first.status, 0, first.stderr)
   const version = readVersion(fixture)
-  runWorkflowStep(fixture, 'Push release preparation to its managed branch', {
-    VERSION: version,
-    BASE_SHA: originalMain,
-    GITHUB_OUTPUT: resolve(fixture.directory, 'branch.outputs'),
+  function runStep(name: string, environment: Record<string, string>): void {
+    const result = spawnSync('bash', ['-euo', 'pipefail', '-c', workflowScript(name)], {
+      cwd: fixture.repository, env: { ...process.env, ...environment }, encoding: 'utf8',
+    })
+    equal(result.status, 0, result.stdout + result.stderr)
+  }
+  runStep('Create the local release commit and tag', { VERSION: version })
+  const releaseSha = git(fixture, 'rev-parse', 'HEAD')
+  const environment = { VERSION: version, RELEASE_SHA: releaseSha, BASE_SHA: baseSha, SHOULD_COMMIT: 'true' }
+  runStep('Publish the release commit and tag atomically', environment)
+  equal(git(fixture, 'ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0], releaseSha)
+  equal(git(fixture, 'ls-remote', 'origin', `refs/tags/${version}^{}`).split(/\s+/)[0], releaseSha)
+  runStep('Publish the release commit and tag atomically', {
+    ...environment, BASE_SHA: releaseSha, SHOULD_COMMIT: 'false',
   })
-  const preparedCommit = git(fixture, 'rev-parse', 'HEAD')
-  equal(git(fixture, 'ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0], originalMain)
+})
+
+test('does not publish either Git ref when main advances during validation', (context) => {
+  const fixture = createFixture(context)
+  const remote = resolve(fixture.directory, 'origin.git')
+  git(fixture, 'init', '--bare', remote)
+  git(fixture, 'remote', 'add', 'origin', remote)
+  git(fixture, 'push', 'origin', 'HEAD:refs/heads/main')
+  const baseSha = git(fixture, 'rev-parse', 'HEAD')
+  const prepared = prepare(fixture, 'first')
+  equal(prepared.status, 0, prepared.stderr)
+  const version = commitRelease(fixture)
+  const releaseSha = git(fixture, 'rev-parse', 'HEAD')
+  git(fixture, 'push', 'origin', 'HEAD:refs/heads/main')
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', workflowScript('Publish the release commit and tag atomically')], {
+    cwd: fixture.repository,
+    env: { ...process.env, BASE_SHA: baseSha, VERSION: version, RELEASE_SHA: releaseSha, SHOULD_COMMIT: 'true' },
+    encoding: 'utf8',
+  })
+  notEqual(result.status, 0)
+  match(result.stdout, /main changed during validation/)
   equal(git(fixture, 'ls-remote', 'origin', `refs/tags/${version}`), '')
-  const rejected = spawnSync('git', ['push', 'origin', 'HEAD:refs/heads/main'], {
-    cwd: fixture.repository, encoding: 'utf8',
-  })
-  notEqual(rejected.status, 0)
-  match(rejected.stderr, /Protected main requires a pull request/)
-  // Model GitHub merging the approved PR on the server, retaining its push restriction.
-  git(fixture, '--git-dir', protectedRemote, 'update-ref', 'refs/heads/main', preparedCommit, originalMain)
-  const reviewed = prepare(fixture, 'reviewed')
-  equal(reviewed.status, 0, reviewed.stderr)
-  match(readFileSync(reviewed.outputsPath, 'utf8'), /should_tag=true/)
-  const publicationEnvironment = { VERSION: version, BASE_SHA: preparedCommit }
-  runWorkflowStep(fixture, 'Publish the release tag on the reviewed main commit', publicationEnvironment)
-  // Re-running only the failed publication job must also tolerate its existing tag.
-  runWorkflowStep(fixture, 'Publish the release tag on the reviewed main commit', publicationEnvironment)
-  equal(git(fixture, 'ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0], preparedCommit)
-  equal(git(fixture, 'ls-remote', 'origin', `refs/tags/${version}^{}`).split(/\s+/)[0], preparedCommit)
 })
 
 test('rejects an unexpected package allocation before modifying the changelog', (context) => {
