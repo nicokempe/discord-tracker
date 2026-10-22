@@ -8,6 +8,9 @@ import {
   Presence,
   TextChannel,
 } from 'discord.js';
+import type { Server } from 'node:http';
+import { startHealthServer } from './health';
+import { isDiscordGatewayReady } from './utils/validators';
 import { clientReady } from './events/clientReady';
 import 'dotenv/config';
 import * as process from "process";
@@ -180,4 +183,25 @@ client.on('presenceUpdate', (oldPresence: Presence | null, newPresence: Presence
 
 client.once(clientReady.name, (): Promise<void> => clientReady.execute(client));
 
-client.login(discordToken).then(r => console.log(`Logged in as ${client.user?.tag}`)).catch(e => console.error(`Login failed: ${e}`));
+let healthServer: Server | undefined;
+
+/** Stops accepting health probes before closing the Discord connection. */
+const stopBot = async (exitCode: number): Promise<never> => {
+  healthServer?.close();
+  await client.destroy();
+  process.exit(exitCode);
+};
+
+process.once('SIGTERM', (): void => { void stopBot(0); });
+process.once('SIGINT', (): void => { void stopBot(0); });
+
+void startHealthServer((): boolean => isDiscordGatewayReady(client))
+  .then(async (server: Server): Promise<void> => {
+    healthServer = server;
+    await client.login(discordToken);
+    console.log(`Logged in as ${client.user?.tag}`);
+  })
+  .catch((error: unknown): void => {
+    console.error('Bot startup failed', error);
+    void stopBot(1);
+  });

@@ -2,12 +2,14 @@
   "name": "discord-tracker",
   "version": "2026.5.0",
   "description": "Advanced Discord Bot with Spotify Integration: Tracks and broadcasts user activities in real-time, offering custom status updates and music tracking features.",
-  "main": "src/Bot.ts",
+  "main": "dist/Bot.js",
   "scripts": {
-    "start": "ts-node src/Bot.ts",
+    "start": "pnpm run build && node dist/Bot.js",
     "build": "tsc",
     "prerelease": "pnpm install && pnpm run build",
-    "release": "npx changelogen@latest --release --patch --bump --push"
+    "release": "npx changelogen@latest --release --patch --bump --push",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test tests/*.test.cjs"
   },
   "repository": {
     "type": "git",
@@ -23,16 +25,18 @@
     "url": "www.nicokempe.de"
   },
   "dependencies": {
-    "@discordjs/rest": "^2.6.1",
-    "discord.js": "^14.26.4",
-    "dotenv": "^17.4.2",
+    "@discordjs/rest": "^2.6.3",
+    "discord.js": "^14.27.0",
+    "dotenv": "^18.0.8",
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@types/node": "^24.12.4",
+    "@types/node": "^24.19.2",
     "changelogen": "^0.6.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
-  "packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24.0.0"
+  }
 }
