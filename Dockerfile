@@ -1,17 +1,24 @@
-# Build stage
-FROM node:25-alpine AS build
+# Use one supported runtime and one frozen lockfile in both stages.
+FROM node:24.22.1-alpine AS base
 WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
+RUN npm install --global pnpm@12.15.0
 
-# Run stage
-FROM node:25-alpine
-WORKDIR /usr/src/app
+FROM base AS build
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.json ./
+COPY src ./src
+RUN pnpm run build
+
+FROM base AS runtime
+ENV NODE_ENV=production
 ENV TZ=Europe/Berlin
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile \
+    && mkdir -p config
 COPY --from=build /usr/src/app/dist ./dist
-COPY package*.json ./
-RUN mkdir -p config \
-    && npm install --only=production
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD ["node", "dist/healthcheck.js"]
+
 CMD ["node", "dist/Bot.js"]
