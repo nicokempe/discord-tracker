@@ -1,0 +1,12 @@
+{
+  "repo": {
+    "provider": "github",
+    "domain": "github.com",
+    "repo": "nicokempe/discord-tracker"
+  },
+  "templates": {
+    "commitMessage": "chore(release): {{newVersion}}",
+    "tagMessage": "{{newVersion}}",
+    "tagBody": "{{newVersion}}"
+  }
+}
