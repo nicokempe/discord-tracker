@@ -1,6 +1,17 @@
 # Changelog
 
 
+## 2026.10.1
+
+[compare changes](https://github.com/nicokempe/discord-tracker/compare/2026.10.0...2026.10.1)
+
+### 🩹 Fixes
+
+- **release:** Restore single-run publishing and recover incomplete releases ([6982da7](https://github.com/nicokempe/discord-tracker/commit/6982da7))
+- **release:** Restore single-run publishing and recover incomplete releases ([#256](https://github.com/nicokempe/discord-tracker/pull/256))
+- Preserve Node process signal handlers at startup ([a3f0c36](https://github.com/nicokempe/discord-tracker/commit/a3f0c36))
+- Preserve Node process signal handlers at startup ([#257](https://github.com/nicokempe/discord-tracker/pull/257))
+
 ## 2026.10.0
 
 [compare changes](https://github.com/nicokempe/discord-tracker/compare/514fc7247860ef08a66960aa0bb32376320d319e...2026.10.0)

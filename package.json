@@ -1,6 +1,6 @@
 {
   "name": "discord-tracker",
-  "version": "2026.10.0",
+  "version": "2026.10.1",
   "description": "Advanced Discord Bot with Spotify Integration: Tracks and broadcasts user activities in real-time, offering custom status updates and music tracking features.",
   "main": "dist/Bot.js",
   "scripts": {
