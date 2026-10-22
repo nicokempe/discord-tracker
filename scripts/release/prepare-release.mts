@@ -2,7 +2,6 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { isDeepStrictEqual } from 'node:util'
 import {
   calculateNextReleaseVersion,
   parseReleaseVersion,
@@ -13,26 +12,17 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const packagePath = resolve(repositoryRoot, 'package.json')
 const changelogPath = resolve(repositoryRoot, 'CHANGELOG.md')
 const baselinePath = resolve(repositoryRoot, 'scripts/release/baseline.json')
-const pendingReleaseRelativePath = 'scripts/release/pending.json'
-const pendingReleasePath = resolve(repositoryRoot, pendingReleaseRelativePath)
-const releasePaths = ['package.json', 'CHANGELOG.md', pendingReleaseRelativePath]
 
 /** Supported command-line options for release preparation. */
 interface CliOptions {
   readonly githubOutputPath: string
   readonly notesFilePath: string
+  readonly resumeVersion: string
 }
 
 /** Pre-automation reference that excludes historical tags from the new release stream. */
 interface ReleaseBaseline {
   readonly commit: string
-  readonly version: string
-}
-
-/** Release files that must pass through a pull request before publishing. */
-interface PendingRelease {
-  readonly baseCommit: string
-  readonly previousReference: string
   readonly version: string
 }
 
@@ -47,7 +37,7 @@ interface MarkdownSection {
 interface PreparedRelease {
   readonly previousReference: string
   readonly shouldCommit: boolean
-  readonly shouldTag: boolean
+  readonly sourceSha: string
   readonly version: string
 }
 
@@ -64,16 +54,14 @@ function main(): void {
     throw new Error(`HEAD has multiple calendar release versions: ${versionsAtHead.join(', ')}`)
   }
 
-  const pendingRelease = readCommittedPendingRelease()
-  const isPendingVersion = pendingRelease?.version === currentVersion
-    && !splitLines(runGit(['tag', '--list'])).includes(currentVersion)
-  const preparedRelease = versionsAtHead.length === 1
-    ? resumeRelease(versionsAtHead[0] ?? '', currentVersion, baseline)
-    : isPendingVersion && pendingRelease !== null
-      ? resumePreparedRelease(pendingRelease, baseline)
-      : prepareNewRelease(packageObject, currentVersion, baseline)
+  const resumeVersion = options.resumeVersion || versionsAtHead[0]
+  const preparedRelease = resumeVersion
+    ? resumeRelease(resumeVersion, currentVersion, baseline)
+    : prepareNewRelease(packageObject, currentVersion, baseline)
   const releaseNotes = extractReleaseNotes(
-    readFileSync(changelogPath, 'utf8'),
+    preparedRelease.shouldCommit
+      ? readFileSync(changelogPath, 'utf8')
+      : runGit(['show', `refs/tags/${preparedRelease.version}:CHANGELOG.md`]),
     preparedRelease.version,
   )
 
@@ -84,7 +72,7 @@ function main(): void {
   console.log(`Prepared ${preparedRelease.version}.`)
 }
 
-/** Validates and resumes a release whose tag already points at HEAD. */
+/** Resumes the latest reachable release, including after main has advanced. */
 function resumeRelease(
   version: string,
   currentVersion: string,
@@ -99,12 +87,19 @@ function resumeRelease(
     )
   }
 
-  extractReleaseNotes(readFileSync(changelogPath, 'utf8'), version)
+  if (version !== getLatestReachableReleaseVersion(baseline.commit)) {
+    throw new Error(`Only the latest reachable calendar release can be resumed: ${version}.`)
+  }
+  const sourceSha = runGit(['rev-parse', `refs/tags/${version}^{commit}`])
+  const taggedPackage = JSON.parse(runGit(['show', `refs/tags/${version}:package.json`])) as Record<string, unknown>
+  if (taggedPackage.version !== version) {
+    throw new Error(`Release tag ${version} has a different committed package version.`)
+  }
 
   return {
     previousReference: getPreviousReleaseVersion(version, baseline.commit) ?? baseline.commit,
     shouldCommit: false,
-    shouldTag: false,
+    sourceSha,
     version,
   }
 }
@@ -130,73 +125,13 @@ function prepareNewRelease(
   ensureVersionDoesNotExist(allTags, releaseVersion)
   runChangelogen(releaseVersion, previousReference)
   updatePackageVersion(packageObject, releaseVersion.version)
-  writePendingRelease(releaseVersion.version, previousReference)
 
   return {
     previousReference,
     shouldCommit: true,
-    shouldTag: false,
+    sourceSha: runGit(['rev-parse', 'HEAD']),
     version: releaseVersion.version,
   }
-}
-
-/** Loads only preparation metadata already committed to the checked-out history. */
-function readCommittedPendingRelease(): PendingRelease | null {
-  if (!gitCommandSucceeds(['cat-file', '-e', `HEAD:${pendingReleaseRelativePath}`])) {
-    return null
-  }
-  const pendingObject = parseJsonObject(runGit(['show', `HEAD:${pendingReleaseRelativePath}`]), pendingReleaseRelativePath)
-  return {
-    baseCommit: getRequiredString(pendingObject, 'baseCommit', pendingReleaseRelativePath),
-    previousReference: getRequiredString(pendingObject, 'previousReference', pendingReleaseRelativePath),
-    version: getRequiredString(pendingObject, 'version', pendingReleaseRelativePath),
-  }
-}
-
-/** Resumes reviewed release files, refreshing their pull request if main has advanced. */
-function resumePreparedRelease(pendingRelease: PendingRelease, baseline: ReleaseBaseline): PreparedRelease {
-  const versionParts = parseReleaseVersion(pendingRelease.version)
-  const previousReference = getLatestReachableReleaseVersion(baseline.commit) ?? baseline.commit
-  if (versionParts === null || pendingRelease.previousReference !== previousReference) {
-    throw new Error('Prepared release does not match the current release history.')
-  }
-  if (!/^[0-9a-f]{40}$/.test(pendingRelease.baseCommit)
-    || !gitCommandSucceeds(['merge-base', '--is-ancestor', pendingRelease.baseCommit, 'HEAD'])) {
-    throw new Error('Prepared release base must be an ancestor of HEAD.')
-  }
-  if (runGit(['diff', '--name-only', 'HEAD', '--', ...releasePaths]).length > 0) {
-    throw new Error('Prepared release files must be committed before publishing.')
-  }
-  const changelog = readFileSync(changelogPath, 'utf8')
-  extractReleaseNotes(changelog, pendingRelease.version)
-  const changedPaths = splitLines(runGit(['diff', '--name-only', pendingRelease.baseCommit, 'HEAD']))
-  const sourcePackage = parseJsonObject(runGit(['show', `${pendingRelease.baseCommit}:package.json`]), 'source package.json')
-  const currentPackage = readJsonObject(packagePath)
-  sourcePackage.version = currentPackage.version
-  const requiresRefresh = changedPaths.some(path => !releasePaths.includes(path))
-    || !isDeepStrictEqual(sourcePackage, currentPackage)
-  if (requiresRefresh) {
-    const section = findMarkdownSection(changelog, pendingRelease.version)
-    writeFileSync(changelogPath, changelog.slice(0, section.start) + changelog.slice(section.end), 'utf8')
-    runChangelogen({ ...versionParts, version: pendingRelease.version }, previousReference)
-    writePendingRelease(pendingRelease.version, previousReference)
-  }
-  return {
-    previousReference,
-    shouldCommit: requiresRefresh,
-    shouldTag: !requiresRefresh,
-    version: pendingRelease.version,
-  }
-}
-
-/** Records the exact source commit represented by a release pull request. */
-function writePendingRelease(version: string, previousReference: string): void {
-  const pendingRelease: PendingRelease = {
-    baseCommit: runGit(['rev-parse', 'HEAD']),
-    previousReference,
-    version,
-  }
-  writeFileSync(pendingReleasePath, `${JSON.stringify(pendingRelease, null, 2)}\n`, 'utf8')
 }
 
 /** Invokes the lockfile-pinned Changelogen CLI for Conventional Commit release notes. */
@@ -322,12 +257,7 @@ function updatePackageVersion(packageObject: Record<string, unknown>, version: s
 
 /** Reads a JSON file and requires an object at its root. */
 function readJsonObject(path: string): Record<string, unknown> {
-  return parseJsonObject(readFileSync(path, 'utf8'), path)
-}
-
-/** Parses JSON text and requires an object at its root. */
-function parseJsonObject(contents: string, path: string): Record<string, unknown> {
-  const parsedValue: unknown = JSON.parse(contents)
+  const parsedValue: unknown = JSON.parse(readFileSync(path, 'utf8'))
   if (typeof parsedValue !== 'object' || parsedValue === null || Array.isArray(parsedValue)) {
     throw new Error(`${path} must contain a JSON object.`)
   }
@@ -381,16 +311,18 @@ function splitLines(value: string): string[] {
   return value.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
 }
 
-/** Parses the two required workflow path options. */
+/** Parses required output paths and an optional incomplete release to resume. */
 function parseCliOptions(argumentsList: readonly string[]): CliOptions {
   let githubOutputPath = ''
   let notesFilePath = ''
+  let resumeVersion = ''
 
   for (let argumentIndex = 0; argumentIndex < argumentsList.length; argumentIndex += 1) {
     const argument = argumentsList[argumentIndex]
     const value = argumentsList[argumentIndex + 1]
-    if ((argument === '--github-output' || argument === '--notes-file') && value === undefined) {
-      throw new Error(`${argument} requires a path.`)
+    if (['--github-output', '--notes-file', '--resume-version'].includes(argument ?? '')
+      && (value === undefined || value.startsWith('--'))) {
+      throw new Error(`${argument} requires a value.`)
     }
 
     if (argument === '--github-output') {
@@ -399,6 +331,10 @@ function parseCliOptions(argumentsList: readonly string[]): CliOptions {
     }
     else if (argument === '--notes-file') {
       notesFilePath = value ?? ''
+      argumentIndex += 1
+    }
+    else if (argument === '--resume-version') {
+      resumeVersion = value ?? ''
       argumentIndex += 1
     }
     else {
@@ -410,7 +346,7 @@ function parseCliOptions(argumentsList: readonly string[]): CliOptions {
     throw new Error('--github-output and --notes-file are required.')
   }
 
-  return { githubOutputPath, notesFilePath }
+  return { githubOutputPath, notesFilePath, resumeVersion }
 }
 
 /** Appends scalar values for later GitHub Actions steps. */
@@ -422,9 +358,8 @@ function writeWorkflowOutputs(
   const outputLines = [
     `previous_reference=${preparedRelease.previousReference}`,
     `release_notes_path=${notesFilePath}`,
-    `ready_to_publish=${String(!preparedRelease.shouldCommit)}`,
     `should_commit=${String(preparedRelease.shouldCommit)}`,
-    `should_tag=${String(preparedRelease.shouldTag)}`,
+    `source_sha=${preparedRelease.sourceSha}`,
     `version=${preparedRelease.version}`,
   ]
   appendFileSync(githubOutputPath, `${outputLines.join('\n')}\n`, 'utf8')

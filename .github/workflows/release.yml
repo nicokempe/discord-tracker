@@ -16,18 +16,14 @@ env:
   TRIVY_VERSION: v0.76.1
 
 jobs:
-  prepare:
-    name: Prepare or resume release
+  release:
+    name: Release container and changelog
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     permissions:
       contents: write
-      pull-requests: write
-    outputs:
-      ready_to_publish: ${{ steps.release.outputs.ready_to_publish }}
-      version: ${{ steps.release.outputs.version }}
-      release_sha: ${{ steps.source.outputs.sha }}
-
+      packages: write
+      id-token: write
     steps:
       - name: Require the main branch
         run: |
@@ -43,7 +39,6 @@ jobs:
           fetch-depth: 0
 
       - name: Require the latest main commit
-        id: source
         run: |
           git fetch origin main
           git fetch --tags origin
@@ -53,7 +48,6 @@ jobs:
             exit 1
           fi
           echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -69,12 +63,54 @@ jobs:
       - name: Validate release tooling
         run: pnpm run release:check
 
+      # Resolve signing dependencies before any tags or images can be published.
+      - name: Install checksum-pinned Cosign with download retries
+        env:
+          COSIGN_VERSION: v3.1.4
+          COSIGN_SHA256: 424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+        run: bash scripts/release/install-cosign.sh
+
+      - name: Find an incomplete release
+        id: incomplete
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { readFileSync } = require('node:fs')
+            const { execFileSync } = require('node:child_process')
+            const version = JSON.parse(readFileSync('package.json', 'utf8')).version
+            if (!/^[1-9]\d{3}\.(?:[1-9]|1[0-2])\.(?:0|[1-9]\d*)$/.test(version)) {
+              throw new Error('Package version must use YYYY.M.N.')
+            }
+            if (!execFileSync('git', ['tag', '--list', version], { encoding: 'utf8' }).trim()) return
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({ ...context.repo, tag: version })
+              if (!data.draft && !data.prerelease) return
+            } catch (error) {
+              if (error.status !== 404) throw error
+            }
+            core.setOutput('version', version)
+            core.notice(`Resuming incomplete release ${version} from its existing tag.`)
+
       - name: Prepare version and changelog
         id: release
+        env:
+          RESUME_VERSION: ${{ steps.incomplete.outputs.version }}
         run: |
-          pnpm run release:prepare \
-            --github-output "$GITHUB_OUTPUT" \
-            --notes-file "$RUNNER_TEMP/discord-tracker-release-notes.md"
+          arguments=(--github-output "$GITHUB_OUTPUT"
+            --notes-file "$RUNNER_TEMP/discord-tracker-release-notes.md")
+          if [[ -n "$RESUME_VERSION" ]]; then
+            arguments+=(--resume-version "$RESUME_VERSION")
+          fi
+          pnpm run release:prepare "${arguments[@]}"
+
+      - name: Restore the original source when resuming a release
+        if: steps.release.outputs.should_commit == 'false'
+        env:
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        run: |
+          git checkout --detach "$SOURCE_SHA"
+          pnpm install --frozen-lockfile
 
       - name: Check release diff
         run: git diff --check
@@ -85,101 +121,24 @@ jobs:
       - name: Test application and build compiled output
         run: pnpm test
 
-      - name: Push release preparation to its managed branch
+      - name: Create the local release commit and tag
         if: steps.release.outputs.should_commit == 'true'
-        id: branch
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          git fetch origin main
-          if [[ "$BASE_SHA" != "$(git rev-parse origin/main)" ]]; then
-            echo '::error::main changed during preparation. Start a new run.'
-            exit 1
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json CHANGELOG.md scripts/release/pending.json
+          git add package.json CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo '::error::Release preparation did not create a commit.'
+            exit 1
+          fi
           git commit -m "chore(release): $VERSION"
-          branch="release/$VERSION"
-          expected_sha="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
-          git push --force-with-lease="refs/heads/$branch:$expected_sha" \
-            origin "HEAD:refs/heads/$branch"
-          echo "name=$branch" >> "$GITHUB_OUTPUT"
-
-      - name: Open or update the release pull request
-        if: steps.release.outputs.should_commit == 'true'
-        uses: actions/github-script@v9
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          RELEASE_BRANCH: ${{ steps.branch.outputs.name }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const version = process.env.VERSION
-            const branch = process.env.RELEASE_BRANCH
-            const { owner, repo } = context.repo
-            const body = `Prepare calendar release ${version}.\n\nMerge this pull request after its checks pass, then run **Actions → Release** on main again to publish the reviewed commit. If GitHub requests workflow approval, select **Approve workflows to run** first.`
-            let pullRequest
-            try {
-              const existing = await github.rest.pulls.list({
-                owner, repo, state: 'open', base: 'main', head: `${owner}:${branch}`,
-              })
-              const parameters = { owner, repo, title: `chore(release): ${version}`, body }
-              pullRequest = existing.data.length > 0
-                ? await github.rest.pulls.update({ ...parameters, pull_number: existing.data[0].number })
-                : await github.rest.pulls.create({ ...parameters, head: branch, base: 'main' })
-            } catch (error) {
-              if (error.status !== 403) throw error
-              const compareUrl = `https://github.com/${owner}/${repo}/compare/main...${branch}?expand=1`
-              core.warning('Release branch is ready. GitHub denied PR creation; open the PR manually or enable Actions PR creation in repository settings.')
-              await core.summary.addHeading(`Release ${version} prepared`)
-                .addRaw('Publishing is paused until the release files are merged. ')
-                .addLink('Open the release pull request', compareUrl).write()
-              return
-            }
-            await core.summary.addHeading(`Release ${version} prepared`)
-              .addLink('Review and merge the release pull request', pullRequest.data.html_url)
-              .addRaw('\n\nAfter merging, start a new Release run on main to publish.').write()
-
-      - name: Share notes for the reviewed release
-        if: steps.release.outputs.ready_to_publish == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-notes-${{ github.run_id }}
-          path: ${{ runner.temp }}/discord-tracker-release-notes.md
-          overwrite: true
-          if-no-files-found: error
-          retention-days: 7
-
-  release:
-    name: Publish reviewed release
-    needs: prepare
-    if: needs.prepare.outputs.ready_to_publish == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-    env:
-      BASE_SHA: ${{ needs.prepare.outputs.release_sha }}
-
-    steps:
-      - name: Checkout the reviewed release commit
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.release_sha }}
-          fetch-depth: 0
-
-      - name: Download reviewed release notes
-        uses: actions/download-artifact@v8
-        with:
-          name: release-notes-${{ github.run_id }}
-          path: ${{ runner.temp }}/discord-tracker-release-notes
+          git tag --annotate "$VERSION" --message "$VERSION"
 
       - name: Set immutable release metadata
         env:
-          VERSION: ${{ needs.prepare.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           release_sha="$(git rev-parse HEAD)"
           echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
@@ -198,8 +157,67 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find an already published release image
+        id: image
+        env:
+          SHOULD_COMMIT: ${{ steps.release.outputs.should_commit }}
+        run: |
+          error_path="$RUNNER_TEMP/registry-inspect-error.txt"
+          if digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
+            --format '{{.Manifest.Digest}}' 2>"$error_path")"; then
+            if [[ "$SHOULD_COMMIT" == true ]]; then
+              echo '::error::The new release version already has a registry image.'
+              exit 1
+            fi
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo '::error::Registry returned an invalid image digest.'
+              exit 1
+            fi
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          elif grep -qiE 'manifest[ _]unknown' "$error_path" \
+            || grep -Fq -- "$IMAGE:$VERSION: not found" "$error_path"; then
+            echo 'No release image exists yet; building both platforms.'
+          else
+            cat "$error_path" >&2
+            exit 1
+          fi
+
+      - name: Pull and validate the existing release images
+        if: steps.image.outputs.digest != ''
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          index_path="$RUNNER_TEMP/release-image-index.json"
+          docker buildx imagetools inspect "$IMAGE@$IMAGE_DIGEST" --raw > "$index_path"
+          for architecture in amd64 arm64; do
+            platform_digest="$(jq -er --arg architecture "$architecture" '
+              [.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)]
+              | if length == 1 then .[0].digest else error("Expected one platform manifest") end
+            ' "$index_path")"
+            [[ "$platform_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            platform_reference="$IMAGE@$platform_digest"
+            docker pull --platform "linux/$architecture" "$platform_reference"
+            docker image inspect "$platform_reference" | jq -e \
+              --arg architecture "$architecture" --arg revision "$RELEASE_SHA" \
+              --arg version "$VERSION" --arg source "https://github.com/$GITHUB_REPOSITORY" '
+              .[0] | .Architecture == $architecture and .Os == "linux" and
+              .Config.Labels["org.opencontainers.image.revision"] == $revision and
+              .Config.Labels["org.opencontainers.image.version"] == $version and
+              .Config.Labels["org.opencontainers.image.source"] == $source
+            '
+            docker tag "$platform_reference" "$IMAGE:sha-$SHORT_SHA-$architecture"
+          done
+
       # Separate local images allow both platforms to be scanned before publishing.
       - name: Build AMD64 container
+        if: steps.image.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -218,6 +236,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=discord-tracker-amd64
 
       - name: Build ARM64 container
+        if: steps.image.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -285,7 +304,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Publish the release tag on the reviewed main commit
+      - name: Publish the release commit and tag atomically
+        env:
+          SHOULD_COMMIT: ${{ steps.release.outputs.should_commit }}
         run: |
           git fetch origin main
           git fetch --tags origin
@@ -293,45 +314,32 @@ jobs:
             echo '::error::main changed during validation. Start a new run.'
             exit 1
           fi
-          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
-            if [[ "$(git rev-parse "$VERSION^{commit}")" != "$BASE_SHA" ]]; then
-              echo '::error::The release tag points to a different commit.'
-              exit 1
-            fi
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git tag --annotate "$VERSION" --message "$VERSION"
-            git push origin "refs/tags/$VERSION"
+          if [[ "$SHOULD_COMMIT" == true ]]; then
+            git push --atomic origin HEAD:refs/heads/main "refs/tags/$VERSION"
+          elif [[ "$(git rev-parse "refs/tags/$VERSION^{commit}")" != "$RELEASE_SHA" ]]; then
+            echo '::error::The existing tag does not match the release source.'
+            exit 1
           fi
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push scanned images and assemble the release manifest
+      - name: Publish scanned images or reuse the existing manifest
         id: manifest
+        env:
+          EXISTING_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
-          docker push "$IMAGE:sha-$SHORT_SHA-amd64"
-          docker push "$IMAGE:sha-$SHORT_SHA-arm64"
-          docker buildx imagetools create \
-            --tag "$IMAGE:$VERSION" --tag "$IMAGE:sha-$SHORT_SHA" \
-            "$IMAGE:sha-$SHORT_SHA-amd64" "$IMAGE:sha-$SHORT_SHA-arm64"
-          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          digest="$EXISTING_DIGEST"
+          if [[ -z "$digest" ]]; then
+            docker push "$IMAGE:sha-$SHORT_SHA-amd64"
+            docker push "$IMAGE:sha-$SHORT_SHA-arm64"
+            docker buildx imagetools create \
+              --tag "$IMAGE:$VERSION" --tag "$IMAGE:sha-$SHORT_SHA" \
+              "$IMAGE:sha-$SHORT_SHA-amd64" "$IMAGE:sha-$SHORT_SHA-arm64"
+            digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          fi
           if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo '::error::Registry returned an invalid image digest.'
             exit 1
           fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.1.4
-          install-dir: ${{ runner.temp }}/cosign-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Sign the release manifest by digest
         env:
@@ -344,11 +352,14 @@ jobs:
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:latest" --tag "$IMAGE:main" "$IMAGE@$IMAGE_DIGEST"
+          for alias in latest main; do
+            [[ "$(docker buildx imagetools inspect "$IMAGE:$alias" --format '{{.Manifest.Digest}}')" == "$IMAGE_DIGEST" ]]
+          done
 
       - name: Create or update GitHub Release
         uses: actions/github-script@v9
         env:
-          RELEASE_NOTES_PATH: ${{ runner.temp }}/discord-tracker-release-notes/discord-tracker-release-notes.md
+          RELEASE_NOTES_PATH: ${{ steps.release.outputs.release_notes_path }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -366,6 +377,7 @@ jobs:
               body: readFileSync(notesPath, 'utf8'),
               draft: false,
               prerelease: false,
+              make_latest: 'true',
             }
             let existingRelease
             try {
