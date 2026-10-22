@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const { test } = require('node:test');
+const { Client: DiscordClient, Collection, Status: GatewayStatus, WebSocketShard } = require('discord.js');
+const { isDiscordGatewayReady } = require('../dist/utils/validators.js');
 
 /** Executes the built entry point with an isolated Discord client and configuration. */
 const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, mentionUser = true } = {}) => {
@@ -20,7 +22,7 @@ const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, m
   class Client {
     ready = false;
     destroyed = false;
-    ws = { status: 0 };
+    ws = { status: 0, shards: new Collection([[0, { status: 0 }]]) };
     channels = { cache: new Map([['channel', new TextChannel()]]) };
     user = { tag: 'Tracker#0001', setActivity: () => {} };
     constructor() { client = this; }
@@ -39,6 +41,7 @@ const loadBot = async ({ canSend = true, loginFails = false, broadcast = true, m
     'discord.js': { Client, TextChannel, ActivityType: { Playing: 0, Listening: 2 }, PermissionFlagsBits: { SendMessages: 1n }, Status: { Ready: 0 } },
     './events/clientReady': { clientReady: { name: 'clientReady', execute: async () => {} } },
     './health': { startHealthServer: async check => { readiness = check; return { close: () => { closed = true; } }; } },
+    './utils/validators': { isDiscordGatewayReady },
     'dotenv/config': {},
     process: fakeProcess,
     fs: { readFileSync: () => JSON.stringify({ users: [{ userId: 'tracked', channelId: 'channel', broadcast, prefix: ':star:', mentionUser }] }) },
@@ -97,9 +100,9 @@ test('readiness requires both client readiness and a connected gateway', async (
   assert.equal(bot.readiness(), false);
   bot.client.ready = true;
   assert.equal(bot.readiness(), true);
-  bot.client.ws.status = 5;
+  bot.client.ws.shards.get(0).status = 5;
   assert.equal(bot.readiness(), false);
-  bot.client.ws.status = 0;
+  bot.client.ws.shards.get(0).status = 0;
   assert.equal(bot.readiness(), true);
   bot.signals.get('SIGTERM')();
   await new Promise(resolve => setImmediate(resolve));
@@ -113,4 +116,24 @@ test('failed login closes readiness and exits non-zero for the restart policy', 
   assert.equal(bot.isClosed(), true);
   assert.equal(bot.client.destroyed, true);
   assert.deepEqual(bot.exits, [1]);
+});
+
+test('rejects reconnecting shards while real Discord.js client readiness remains true', () => {
+  const client = new DiscordClient({ intents: [] });
+  assert.equal(isDiscordGatewayReady(client), false);
+  client.ws.status = GatewayStatus.Ready;
+  assert.equal(client.isReady(), true);
+  assert.equal(isDiscordGatewayReady(client), false);
+  client.ws.shards.set(0, new WebSocketShard(client.ws, 0));
+  client.ws.shards.set(1, new WebSocketShard(client.ws, 1));
+  for (const shard of client.ws.shards.values()) shard.status = GatewayStatus.Ready;
+  assert.equal(isDiscordGatewayReady(client), true);
+  for (const status of [GatewayStatus.Connecting, GatewayStatus.Identifying, GatewayStatus.Resuming, GatewayStatus.Disconnected]) {
+    client.ws.shards.get(1).status = status;
+    assert.equal(client.isReady(), true);
+    assert.equal(isDiscordGatewayReady(client), false);
+  }
+  client.ws.shards.get(1).status = GatewayStatus.Ready;
+  assert.equal(isDiscordGatewayReady(client), true);
+  client.ws.shards.clear();
 });

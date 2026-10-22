@@ -6,11 +6,11 @@ import {
   MessagePayload,
   PermissionFlagsBits,
   Presence,
-  Status as GatewayStatus,
   TextChannel,
 } from 'discord.js';
 import type { Server } from 'node:http';
 import { startHealthServer } from './health';
+import { isDiscordGatewayReady } from './utils/validators';
 import { clientReady } from './events/clientReady';
 import 'dotenv/config';
 import * as process from "process";
@@ -195,7 +195,7 @@ const stopBot = async (exitCode: number): Promise<never> => {
 process.once('SIGTERM', (): void => { void stopBot(0); });
 process.once('SIGINT', (): void => { void stopBot(0); });
 
-void startHealthServer((): boolean => client.isReady() && client.ws.status === GatewayStatus.Ready)
+void startHealthServer((): boolean => isDiscordGatewayReady(client))
   .then(async (server: Server): Promise<void> => {
     healthServer = server;
     await client.login(discordToken);
