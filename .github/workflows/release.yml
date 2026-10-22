@@ -8,18 +8,26 @@ concurrency:
   group: discord-tracker-release
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 env:
   TRIVY_VERSION: v0.76.1
 
 jobs:
-  release:
-    name: Release container and changelog
+  prepare:
+    name: Prepare or resume release
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     permissions:
       contents: write
-      packages: write
-      id-token: write
+      pull-requests: write
+    outputs:
+      ready_to_publish: ${{ steps.release.outputs.ready_to_publish }}
+      version: ${{ steps.release.outputs.version }}
+      release_sha: ${{ steps.source.outputs.sha }}
+
     steps:
       - name: Require the main branch
         run: |
@@ -35,6 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: Require the latest main commit
+        id: source
         run: |
           git fetch origin main
           git fetch --tags origin
@@ -44,6 +53,7 @@ jobs:
             exit 1
           fi
           echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -75,24 +85,101 @@ jobs:
       - name: Test application and build compiled output
         run: pnpm test
 
-      - name: Create the local release commit and tag
+      - name: Push release preparation to its managed branch
         if: steps.release.outputs.should_commit == 'true'
+        id: branch
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json CHANGELOG.md
-          if git diff --cached --quiet; then
-            echo '::error::Release preparation did not create a commit.'
+          git fetch origin main
+          if [[ "$BASE_SHA" != "$(git rev-parse origin/main)" ]]; then
+            echo '::error::main changed during preparation. Start a new run.'
             exit 1
           fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json CHANGELOG.md scripts/release/pending.json
           git commit -m "chore(release): $VERSION"
-          git tag --annotate "$VERSION" --message "$VERSION"
+          branch="release/$VERSION"
+          expected_sha="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          git push --force-with-lease="refs/heads/$branch:$expected_sha" \
+            origin "HEAD:refs/heads/$branch"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the release pull request
+        if: steps.release.outputs.should_commit == 'true'
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BRANCH: ${{ steps.branch.outputs.name }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = process.env.VERSION
+            const branch = process.env.RELEASE_BRANCH
+            const { owner, repo } = context.repo
+            const body = `Prepare calendar release ${version}.\n\nMerge this pull request after its checks pass, then run **Actions → Release** on main again to publish the reviewed commit. If GitHub requests workflow approval, select **Approve workflows to run** first.`
+            let pullRequest
+            try {
+              const existing = await github.rest.pulls.list({
+                owner, repo, state: 'open', base: 'main', head: `${owner}:${branch}`,
+              })
+              const parameters = { owner, repo, title: `chore(release): ${version}`, body }
+              pullRequest = existing.data.length > 0
+                ? await github.rest.pulls.update({ ...parameters, pull_number: existing.data[0].number })
+                : await github.rest.pulls.create({ ...parameters, head: branch, base: 'main' })
+            } catch (error) {
+              if (error.status !== 403) throw error
+              const compareUrl = `https://github.com/${owner}/${repo}/compare/main...${branch}?expand=1`
+              core.warning('Release branch is ready. GitHub denied PR creation; open the PR manually or enable Actions PR creation in repository settings.')
+              await core.summary.addHeading(`Release ${version} prepared`)
+                .addRaw('Publishing is paused until the release files are merged. ')
+                .addLink('Open the release pull request', compareUrl).write()
+              return
+            }
+            await core.summary.addHeading(`Release ${version} prepared`)
+              .addLink('Review and merge the release pull request', pullRequest.data.html_url)
+              .addRaw('\n\nAfter merging, start a new Release run on main to publish.').write()
+
+      - name: Share notes for the reviewed release
+        if: steps.release.outputs.ready_to_publish == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes-${{ github.run_id }}
+          path: ${{ runner.temp }}/discord-tracker-release-notes.md
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish reviewed release
+    needs: prepare
+    if: needs.prepare.outputs.ready_to_publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      BASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+
+    steps:
+      - name: Checkout the reviewed release commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Download reviewed release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes-${{ github.run_id }}
+          path: ${{ runner.temp }}/discord-tracker-release-notes
 
       - name: Set immutable release metadata
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           release_sha="$(git rev-parse HEAD)"
           echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
@@ -198,17 +285,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Publish the release commit and tag atomically
-        env:
-          SHOULD_COMMIT: ${{ steps.release.outputs.should_commit }}
+      - name: Publish the release tag on the reviewed main commit
         run: |
           git fetch origin main
+          git fetch --tags origin
           if [[ "$BASE_SHA" != "$(git rev-parse origin/main)" ]]; then
             echo '::error::main changed during validation. Start a new run.'
             exit 1
           fi
-          if [[ "$SHOULD_COMMIT" == true ]]; then
-            git push --atomic origin HEAD:refs/heads/main "refs/tags/$VERSION"
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            if [[ "$(git rev-parse "$VERSION^{commit}")" != "$BASE_SHA" ]]; then
+              echo '::error::The release tag points to a different commit.'
+              exit 1
+            fi
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag --annotate "$VERSION" --message "$VERSION"
+            git push origin "refs/tags/$VERSION"
           fi
 
       - name: Log in to GitHub Container Registry
@@ -254,7 +348,7 @@ jobs:
       - name: Create or update GitHub Release
         uses: actions/github-script@v9
         env:
-          RELEASE_NOTES_PATH: ${{ steps.release.outputs.release_notes_path }}
+          RELEASE_NOTES_PATH: ${{ runner.temp }}/discord-tracker-release-notes/discord-tracker-release-notes.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

@@ -103,13 +103,13 @@ Contributions to the Discord Activity Tracker Bot are welcome. Please feel free 
 
 ### Releases and published containers
 
-Use **Actions → Release → Run workflow** on `main` to generate a Berlin calendar
-version (`YYYY.M.N`), changelog, annotated Git tag and GitHub Release, and publish
-signed AMD64/ARM64 images to `ghcr.io/nicokempe/discord-tracker`. Images are tagged
-with the release version, release commit, `latest` and the existing `main` alias.
-Pull requests and ordinary pushes run validation; containers are published by
-the manual release workflow. See [RELEASING.md](RELEASING.md) for prerequisites,
-scan artifacts and retry behavior.
+Use **Actions → Release → Run workflow** on `main` to prepare a Berlin calendar
+version (`YYYY.M.N`) and changelog in a release pull request. After its checks pass
+and it is merged, run **Release** again to tag the reviewed `main` commit, create
+the GitHub Release and publish signed AMD64/ARM64 containers to
+`ghcr.io/nicokempe/discord-tracker`. The workflow respects branch protection and
+retains the release version, commit, `latest` and existing `main` image tags.
+See [RELEASING.md](RELEASING.md) for the two phases, scan artifacts and retries.
 
 ### Container health
 
